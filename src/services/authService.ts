@@ -8,11 +8,16 @@ export interface UserProfile {
   firstname?: string;
   secondname?: string;
   thirdname?: string;
+  lastname?: string;
   fathername1?: string;
   fathername2?: string;
   mothername1?: string;
   mothername2?: string;
   gender?: string;
+  email?: string;
+  phone?: string;
+  family_name? : string
+
 
   // Step 2 - Private
   dateofbirth?: string;
@@ -90,7 +95,7 @@ class AuthService {
     return response.data;
   }
 
-  // ✅ SINGLE updateMyProfile (FormData version)
+  // SINGLE updateMyProfile (FormData version)
   async updateMyProfile(profileData: Partial<UserProfile>): Promise<UserProfile> {
     const formData = new FormData();
 

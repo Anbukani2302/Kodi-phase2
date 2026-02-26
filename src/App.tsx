@@ -12,12 +12,14 @@ import GenealogyPage from "./components/GenealogyPage";
 import ChatPage from "./components/ChatPage";
 import ConnectionsPage from "./components/ConnectionsPage";
 import DashboardPage from "./components/DashboardPage";
+import OneToConnectPage from "./components/OneToConnectPage";
 
 import { authService } from "./services/authService";
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [isOtpStep, setIsOtpStep] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -47,11 +49,13 @@ export default function App() {
   return (
     <LanguageProvider>
       <div className="min-h-screen bg-gray-50">
-        <Navbar
-          isAuthenticated={isAuthenticated}
-          onLoginClick={() => setShowLoginModal(true)}
-          onLogout={handleLogout}
-        />
+        {!showLoginModal && !isOtpStep && (
+          <Navbar
+            isAuthenticated={isAuthenticated}
+            onLoginClick={() => setShowLoginModal(true)}
+            onLogout={handleLogout}
+          />
+        )}
 
         <Routes>
           {/* Public Landing Page */}
@@ -109,6 +113,15 @@ export default function App() {
           />
 
           <Route
+            path="/one-to-connect"
+            element={
+              isAuthenticated ? (
+                localStorage.getItem('userRole') === 'admin' ? <Navigate to="/dashboard" /> : <OneToConnectPage />
+              ) : <Navigate to="/" />
+            }
+          />
+
+          <Route
             path="/dashboard"
             element={
               isAuthenticated ? <DashboardPage /> : <Navigate to="/" />
@@ -121,9 +134,13 @@ export default function App() {
 
         <LoginModal
           isOpen={showLoginModal}
-          onClose={() => setShowLoginModal(false)}
+          onClose={() => {
+            setShowLoginModal(false);
+            setIsOtpStep(false);
+          }}
           onLogin={handleLogin}
           onNavigate={(page) => navigate(page)}
+          onStepChange={(step) => setIsOtpStep(step === 'otp')}
         />
       </div>
     </LanguageProvider>

@@ -17,7 +17,7 @@ export interface TargetPerson {
 
 export interface Relation {
   id: number;
-  relation_type: string;
+  relation_to_me: string;
   relation_label: string;
   status: string;
   direction: string;
@@ -89,15 +89,25 @@ export interface PersonDetailResponse {
   image?: string;
 }
 
+// UPDATED: SendInvitationResponse interface
 export interface SendInvitationResponse {
+  code: string;
+  status: string;
   success: boolean;
   message: string;
   invitation_sent: boolean;
   person_id: number;
+  invitation_id?: number;
+  otp_sent?: boolean;
 }
 
+// UPDATED: SendInvitationPayload interface - includes relation_to_me
 export interface SendInvitationPayload {
   mobile_number: string;
+  father_name?: string;
+  relation_type?: string;
+  relation_to_me?: string;
+  message?: string;
 }
 
 export interface NextFlowResponse {
@@ -139,7 +149,6 @@ export interface NextFlowResponse {
   total_options: number;
 }
 
-// services/genealogyService.ts-ல் (அல்லது உங்கள் interface file-ல்)
 export interface RelationItem {
   id: number;
   from_person: number;
@@ -164,6 +173,7 @@ export interface RelationItem {
   brick_label?: string;
   image?: string;
 }
+
 export interface PersonResponse {
   id: number;
   linked_user: number;
@@ -235,12 +245,10 @@ export interface PersonRelationsResponse {
   family_members?: any[];
 }
 
-// ✅ ADD THIS TYPE
 export interface PersonMeResponse extends PersonDetailResponse {
   // Same as PersonDetailResponse but from /me/ endpoint
 }
 
-// ✅ ADD GenerationInfo interface
 export interface GenerationInfo {
   person: {
     id: number;
@@ -267,7 +275,17 @@ export interface GenerationInfo {
   };
 }
 
-// services/genealogyService.ts - Updated with getPersonMe
+// NEW: Interface for relation types dropdown
+export interface RelationTypeOption {
+  value: string;
+  label: string;
+  category: string;
+}
+
+export interface RelationTypesResponse {
+  [category: string]: RelationTypeOption[];
+}
+
 class GenealogyService {
   async addRelative(data: AddRelativePayload): Promise<AddRelativeResponse> {
     console.log("API Call - addRelative:");
@@ -322,24 +340,75 @@ class GenealogyService {
     }
   }
 
-  async sendInvitation(personId: number, mobileNumber: string, fatherName?: string): Promise<SendInvitationResponse> {
+  // UPDATED: sendInvitation method with correct parameters
+  async sendInvitation(
+    personId: number,
+    payloadOrMobileNumber: string | SendInvitationPayload,
+    fatherName?: string,
+    relationType?: string
+  ): Promise<SendInvitationResponse> {
     console.log("API Call - sendInvitation:");
     console.log("Endpoint:", `/api/genealogy/persons/${personId}/send_invitation/`);
-    console.log("Data:", { mobile_number: mobileNumber, father_name: fatherName });
+
+    let finalPayload: any = {};
+
+    if (typeof payloadOrMobileNumber === 'object') {
+      finalPayload = { ...payloadOrMobileNumber };
+      // Ensure relation_type is set if only relation_to_me is provided (backward compatibility)
+      if (!finalPayload.relation_type && finalPayload.relation_to_me) {
+        finalPayload.relation_type = finalPayload.relation_to_me;
+      }
+    } else {
+      finalPayload = {
+        mobile_number: payloadOrMobileNumber,
+        relation_type: relationType
+      };
+      if (fatherName) {
+        finalPayload.father_name = fatherName;
+      }
+    }
+
+    console.log("Data:", finalPayload);
 
     try {
       const response = await api.post(
         `/api/genealogy/persons/${personId}/send_invitation/`,
-        {
-          mobile_number: mobileNumber,
-          father_name: fatherName
-        }
+        finalPayload
       );
 
       console.log("API Response:", response.data);
       return response.data;
     } catch (error: any) {
-      console.error("API Error:", error);
+      console.error("API Error in sendInvitation:", error);
+      console.error("Error Response:", error.response?.data);
+      throw error;
+    }
+  }
+
+  // NEW: Get relation types for dropdown
+  async getRelationTypes(lang: string = 'en'): Promise<RelationTypesResponse> {
+    console.log(`API Call - getRelationTypes for language: ${lang}`);
+
+    try {
+      const response = await api.get(`/api/fixed-relations/dropdown_options/?lang=${lang}`);
+      console.log("Relation types response:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("Error fetching relation types:", error);
+      throw error;
+    }
+  }
+
+  // NEW: Get all relations in a specific language
+  async getRelationsByLanguage(lang: string = 'en'): Promise<any> {
+    console.log(`API Call - getRelationsByLanguage: ${lang}`);
+
+    try {
+      const response = await api.get(`/api/fixed-relations/by_language/?lang=${lang}`);
+      console.log("Relations by language response:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("Error fetching relations by language:", error);
       throw error;
     }
   }
@@ -373,7 +442,6 @@ class GenealogyService {
     }
   }
 
-  // Get next flow options for a person
   async getNextFlow(personId: number): Promise<NextFlowResponse> {
     console.log(`API Call - getNextFlow for person ${personId}`);
 
@@ -390,7 +458,6 @@ class GenealogyService {
     }
   }
 
-  // Keep existing getCurrentPerson method for backward compatibility
   async getCurrentPerson(): Promise<PersonResponse> {
     console.log("API Call - getCurrentPerson (legacy):");
 
@@ -403,7 +470,6 @@ class GenealogyService {
       console.error("Error Response:", error.response);
       throw error;
     }
-
   }
 
   async addRelativeAction(personId: number, data: AddRelativeActionPayload): Promise<AddRelativeResponse> {
@@ -421,7 +487,6 @@ class GenealogyService {
     }
   }
 
-  // NEW: Get generation info for a person
   async getGenerationInfo(personId: number): Promise<GenerationInfo> {
     console.log(`API Call - getGenerationInfo for person ${personId}`);
 
@@ -431,6 +496,18 @@ class GenealogyService {
       return response.data;
     } catch (error: any) {
       console.error("Error fetching generation info:", error);
+      throw error;
+    }
+  }
+
+  async searchPersons(query: string): Promise<any> {
+    console.log(`API Call - searchPersons for query: ${query}`);
+    try {
+      const response = await api.get(`/api/genealogy/persons/search/?q=${query}`);
+      console.log("Search response:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("Error searching persons:", error);
       throw error;
     }
   }

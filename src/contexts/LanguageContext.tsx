@@ -14,13 +14,20 @@ const translations: Translations = {
   // Navigation
   home: { ta: 'முகப்பு', en: 'Home' },
   profile: { ta: 'சுயவிவரம்', en: 'Profile' },
-  genealogy: { ta: 'கொடி வழி வரைபடம்', en: 'Family Tree' },
+  genealogy: { ta: 'கொடி வழி வரைபடம்', en: 'Geneology Map' },
   chat: { ta: 'அரட்டை', en: 'Chat' },
   connections: { ta: 'தொடர்புகள்', en: 'Connections' },
   login: { ta: 'உள்நுழைய', en: 'Login' },
   logout: { ta: 'வெளியேறு', en: 'Logout' },
   kodi: { ta: 'கொடி', en: 'KODI' },
   language: { ta: 'ta', en: 'en' },
+  services: { ta: 'சேவைகள்', en: 'Services' },
+
+  // New translations for download and relationship
+  download: { ta: 'பதிவிறக்கம்', en: 'Download' },
+  downloadOptions: { ta: 'பதிவிறக்க வசதிகள்', en: 'Download Options' },
+  relationship: { ta: 'உறவுமுறை', en: 'Relationship' },
+  relationshipFinder: { ta: 'இருவருக்கான உறவுமுறை', en: 'Relationship Finder' },
 
   logoTagline: {
     ta: 'குடும்ப கலாச்சாரத்திற்கு பெயர் பெற்ற இந்தியாவிலிருந்து உலகத்திற்காக இந்த கொடி வலைதளம்.',
@@ -30,15 +37,15 @@ const translations: Translations = {
   // Hero Content
   familyTreeTitle: {
     ta: 'கொடி (மர) வழிவரைபடம்',
-    en: 'Family Tree Roadmap'
+    en: 'Geneology Roadmap'
   },
   familyTreeContent: {
     ta: 'மக அேநகநபக உலெக கி உளன, அைனவ அ ஒ ைமயானஅ பவைதநி சய ெகா . ெகா வழி வவர தி ெதாட ைடய மனதக உற ைறைய ஏ ப தி அத ெபய அவக கடைம, உைம, ெபா ேபா ற நெறா ைறகைள ப ப றி வ வ நெறா ைறகைள ப ப றி வ வ ேபா கலா சார ஆ , உலெக கி இ கலா சார ஆ , உலெக கி இ. கலா சார இ ப உ ைம. மனதன ஆ கால மாறாதைவ,இதெகா வழி. இவைரயலான ெகா வழி வவர உ வா நி வன க பா காதமிக எளைமயான ேகான நம ெகா ெசய தி ட , உ ைம தகவ கைள ெகா உ வா கப நம வைரபட மக நி சய மிகெப ய வ தா எனபதி சேதகமி ைல, ஒ ெவா ேதச தி த வைரபட வைலமதி க யாதெபா கிஷேம.',
     en: 'There are many people all over the world, surely it will give everyone a unified experience. The purpose of the lineage is to establish a relationship with the people associated with the lineage and to follow the norms such as duty, rights, and entertainment. It is true that culture is present everywhere. Human desires are unchanging, this is the way of the lineage. There is no doubt that the roadmap we have created with the simplest angle of our flag action plan and true information, which has not been seen by the institutions created so far, will definitely be a huge boon for the people, and the roadmap of every nation is an invaluable treasure.'
   },
-  
-  familyTreeMapping: { ta: 'கொடிவழி வரைபடம்', en: 'Family Tree Mapping' },
-  familyTreePlatform: { ta: 'Family Tree Mapping Platform', en: 'Family Tree Mapping Platform' },
+
+  familyTreeMapping: { ta: 'கொடிவழி வரைபடம்', en: 'Geneology Mapping' },
+  familyTreePlatform: { ta: 'Geneology Mapping Platform', en: 'Geneology Mapping Platform' },
   registerLogin: { ta: 'பதிவுசெய்க / உள்நுழைக', en: 'Register / Login' },
 
   // Landing Page Benefits
@@ -156,12 +163,21 @@ const translations: Translations = {
   offline: { ta: 'ஆஃப்லைன்', en: 'Offline' },
 
   // Connections
-  addFriend: { ta: 'நண்பரைச் சேர்', en: 'Add Friend' },
+  addFamilyMember: { ta: 'குடும்ப உறுப்பினரைச் சேர்', en: 'Add Family Member' },
   accept: { ta: 'ஏற்கவும்', en: 'Accept' },
   reject: { ta: 'நிராகரி', en: 'Reject' },
   pending: { ta: 'நிலுவையில்', en: 'Pending' },
-  friends: { ta: 'நண்பர்கள்', en: 'Friends' },
+  Relatives: { ta: 'உறவினர்கள்', en: 'Relatives' },
   requests: { ta: 'கோரிக்கைகள்', en: 'Requests' },
+  familyMembers: { ta: 'குடும்ப உறுப்பினர்கள்', en: 'Family Members' },
+  accepted: { ta: 'ஏற்கப்பட்டது', en: 'Accepted' },
+  rejected: { ta: 'நிராகரிக்கப்பட்டது', en: 'Rejected' },
+  cancelled: { ta: 'ரத்து செய்யப்பட்டது', en: 'Cancelled' },
+  expired: { ta: 'காலாவதியானது', en: 'Expired' },
+  view: { ta: 'காண்க', en: 'View' },
+  details: { ta: 'விவரங்கள்', en: 'Details' },
+  you: { ta: 'நீங்கள்', en: 'You' },
+  backToMyConnections: { ta: 'எனது உறவுகளுக்குத் திரும்பு', en: 'Back to my connections' },
 
   // Common
   loading: { ta: 'ஏற்றுகிறது...', en: 'Loading...' },
@@ -231,7 +247,7 @@ const translations: Translations = {
   // Profile Page
   profileTitle: { ta: 'சுயவிவரம்', en: 'Profile' },
   profileSubtitle: { ta: 'சுயவிவர விவரங்கள்', en: 'Profile Details' },
-  goToGenealogy: { ta: 'கொடிவழி வரைபடம் செல்லவும்', en: 'Go to Family Tree' },
+  goToGenealogy: { ta: 'கொடிவழி வரைபடம் செல்லவும்', en: 'Go to Geneology Map' },
   step1Public: { ta: 'படி 1 - பகிரங்க விவரங்கள்', en: 'Step 1 - Public Details' },
   step2Private: { ta: 'படி 2 - தனிப்பட்ட விவரங்கள்', en: 'Step 2 - Private Details' },
   step3Cultural: { ta: 'படி 3 - கலாச்சார விவரங்கள்', en: 'Step 3 - Cultural Details' },
@@ -243,7 +259,7 @@ const translations: Translations = {
   contactNumber: { ta: 'தொடர்பு எண்', en: 'Contact Number' },
   nationality: { ta: 'தேசியம்', en: 'Nationality' },
   cultureOfLife: { ta: 'வாழ்க்கை முறை', en: 'Culture of Life' },
-  preferredLanguage: { ta: 'விருப்பமான மொழி', en: 'Preferred Language' },
+  preferredLanguage: { ta: 'தாய்மொழி', en: 'Preferred Language' },
   saving: { ta: 'சேமிக்கிறது...', en: 'Saving...' },
   firstnameError: { ta: 'முதல் பெயர் தேவை', en: 'First Name is required' },
   profileLoadError: { ta: 'சுயவிவரத்தை ஏற்ற முடியவில்லை', en: 'Could not load profile' },

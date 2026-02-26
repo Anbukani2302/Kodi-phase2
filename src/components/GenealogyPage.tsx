@@ -28,11 +28,13 @@ import {
   AddRelativePayload,
   AddRelativeActionPayload,
   PersonRelationsResponse,
-  PersonDetailResponse
+  PersonDetailResponse,
+  SendInvitationPayload
 } from '../services/genealogyService';
+import { connectionService } from '../services/connectionService';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
-import api from '../services/api';
+import api, { BASE_URL } from '../services/api';
 
 // Import images
 import relationImg from '../images/relation.png';
@@ -59,7 +61,7 @@ interface UniverseNode {
   isUpdated?: boolean;
   isConnected?: boolean;
   isReadOnly?: boolean;
-  image?: string;
+  image?: string | null;
 }
 
 // Add GenerationInfo interface
@@ -98,6 +100,8 @@ interface NavigationHistoryItem {
   level: number;
   timestamp: number;
   arrowLabel?: string;
+  calculatedRelation?: string;
+  isUpdated?: boolean;
 }
 
 // Add HoverInfo interface
@@ -111,12 +115,21 @@ interface HoverInfo {
   position?: { x: number; y: number };
 }
 
+// Add MobileSearchResult interface for the new API
+interface MobileSearchResult {
+  id: number;
+  mobile_number: string;
+  label: string;
+  value: string;
+}
+
 const RADIUS_BASE = 240;
 const ALL_RELATIONS = [
   'Father', 'Mother', 'Elder Brother', 'Elder Sister', 'Son',
   'Daughter', 'Husband', 'Wife', 'Ashramam', 'Younger Brother', 'Younger Sister'
 ];
-const EXCLUDED_FROM_ADD_PEOPLE = ['Mother', 'Father', 'Husband', 'Wife'];
+// Fixed: Include all relations for Add People modal
+const EXCLUDED_FROM_ADD_PEOPLE: string[] = []; // Empty array - allow all relations to show Add People button
 
 // Helper function to map UI relation to API relation format
 const mapRelationToAPI = (uiRelation: string): string => {
@@ -143,6 +156,16 @@ const mapRelationToAPI = (uiRelation: string): string => {
 
   const mapped = relationMap[uiRelation] || uiRelation.toUpperCase().replace(' ', '_');
   return mapped;
+};
+
+const getFullImageUrl = (imagePath: string | null | undefined): string | null => {
+  if (!imagePath) return null;
+  if (typeof imagePath !== 'string') return null;
+  if (imagePath.startsWith('http')) return imagePath;
+
+  const cleanBase = BASE_URL.replace(/\/$/, '');
+  const cleanPath = imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+  return `${cleanBase}${cleanPath}`;
 };
 
 const mapAPIToUIRelation = (apiRelationCode: string): string => {
@@ -218,7 +241,7 @@ const getInverseRelation = (relation: string, recipientGender: string = 'M'): st
     'Elder Brother': gender === 'M' ? 'Younger Brother' : 'Younger Sister',
     'Younger Brother': gender === 'M' ? 'Elder Brother' : 'Elder Sister',
     'Elder Sister': gender === 'M' ? 'Younger Sister' : 'Younger Brother',
-    'Younger Sister': gender === 'M' ? 'Elder Sister' : 'Younger Brother',
+    'Younger Sister': gender === 'M' ? 'Elder Sister' : 'Elder Brother',
     'Ashramam': 'Ashramam Member',
     'Ashramam Member': 'Ashramam'
   };
@@ -419,7 +442,15 @@ const GenealogyPage = () => {
     }
   });
 
-  const [profile, setProfile] = useState<Partial<UserProfile>>({});
+  const [profile, setProfile] = useState<Partial<UserProfile>>({
+    firstname: '',
+    lastname: '',
+    email: '',
+    gender: 'M',
+    phone: '',
+    family_name: '',
+    familyname1: ''
+  });
   const [currentPerson, setCurrentPerson] = useState<PersonDetailResponse | null>(null);
   const [activeParentId, setActiveParentId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<UniverseNode | null>(null);
@@ -466,21 +497,29 @@ const GenealogyPage = () => {
       name: t('Self'),
       relation: 'Self',
       level: 0,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      calculatedRelation: isTamil ? 'நான்' : 'Me'
     }
   ]);
 
   const [activeButtonIndex, setActiveButtonIndex] = useState<number | null>(null);
-  
+
   // Add search state
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
-  const [filteredButtons, setFilteredButtons] = useState<Array<{id: number, label: string, image: string}>>([]);
+  const [filteredButtons, setFilteredButtons] = useState<Array<{ id: number, label: string, image: string }>>([]);
+  const [searchMobile, setSearchMobile] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [mobileSearchResults, setMobileSearchResults] = useState<MobileSearchResult[]>([]);
+  const [isSearchingMobile, setIsSearchingMobile] = useState(false);
+  // NEW: State for main search suggestions
+  const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
 
   // ============ NEW HOOKS FOR HOVER AUTOMATION ============
   const [hoverPath, setHoverPath] = useState<string[]>([]);
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
   const [hoverTimeout, setHoverTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [invitationError, setInvitationError] = useState<string | null>(null);
   const [hoverElement, setHoverElement] = useState<HTMLElement | null>(null);
   const [isCalculatingRelation, setIsCalculatingRelation] = useState(false);
   const hoverPathRef = useRef<string[]>([]);
@@ -501,6 +540,14 @@ const GenealogyPage = () => {
   // Add refresh interval ref
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Disable body scroll when Genealogy page is active
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'auto';
+    };
+  }, []);
+
   // Function to convert relation code to Tamil
   const getTamilRelation = useCallback((relationCode: string): string => {
     const relationMap: { [key: string]: string } = {
@@ -520,15 +567,14 @@ const GenealogyPage = () => {
       'sister': 'சகோதரி',
       'self': 'தனக்கு',
       'me': 'நான்',
-      'ashramam member': 'ஆச்ரம உறுப்பினர்'
     };
-    
+
     // Try exact match first
     const lowerCode = relationCode.toLowerCase().trim();
     if (relationMap[lowerCode]) {
       return relationMap[lowerCode];
     }
-    
+
     // Try partial matches
     if (lowerCode.includes('father')) return 'அப்பா';
     if (lowerCode.includes('mother')) return 'அம்மா';
@@ -543,7 +589,7 @@ const GenealogyPage = () => {
     if (lowerCode.includes('ashramam')) return 'ஆச்ரமம்';
     if (lowerCode.includes('brother')) return 'சகோதரன்';
     if (lowerCode.includes('sister')) return 'சகோதரி';
-    
+
     return relationCode; // Fallback to original
   }, []);
 
@@ -553,10 +599,10 @@ const GenealogyPage = () => {
 
     try {
       setIsCalculatingRelation(true);
-      
+
       // Get current person ID (from root node)
       const fromPersonId = nodes['root']?.personId || currentPerson?.id || profile.id;
-      
+
       if (!fromPersonId) {
         console.error("No from_person_id available");
         return null;
@@ -576,7 +622,7 @@ const GenealogyPage = () => {
           language: language,
           religion: profile.religion || '',
           caste: profile.caste || '',
-          family_name: profile.family_name || '',
+          family_name: profile.familyname1 || '',
           include_tamil_path: true
         }
       });
@@ -586,7 +632,7 @@ const GenealogyPage = () => {
       if (response.data.success) {
         return response.data.result;
       }
-      
+
       return null;
     } catch (error: any) {
       console.error('Error calculating relation from path:', error);
@@ -601,12 +647,43 @@ const GenealogyPage = () => {
     }
   }, [nodes, currentPerson, profile, language]);
 
+  const getPathToNode = useCallback((node: UniverseNode) => {
+    const path: string[] = [];
+    let currentNode: UniverseNode | null = node;
+
+    while (currentNode && currentNode.parentId && currentNode.id !== 'root') {
+      path.unshift(currentNode.relation.toLowerCase());
+      currentNode = nodes[currentNode.parentId];
+    }
+    return path;
+  }, [nodes]);
+
   // ============ HOVER HANDLER FUNCTIONS ============
   const handleNodeHoverEnter = useCallback(async (node: UniverseNode, event: React.MouseEvent | React.TouchEvent) => {
+    // Check if node is highlighted (active)
+    const isHighlighted = !activeParentId ||
+      node.id === activeParentId ||
+      node.parentId === activeParentId;
+
+    if (!isHighlighted) return;
+
     // Clear any existing timeout
     if (hoverTimeout) {
-      clearTimeout(hoverTimeout);
+      clearTimeout(hoverTimeout as any);
       setHoverTimeout(null);
+    }
+
+    // Get client coordinates safely for both mouse and touch events
+    let clientX: number, clientY: number;
+
+    if ('touches' in event) {
+      // TouchEvent
+      clientX = (event as React.TouchEvent).touches[0].clientX;
+      clientY = (event as React.TouchEvent).touches[0].clientY;
+    } else {
+      // MouseEvent
+      clientX = (event as React.MouseEvent).clientX;
+      clientY = (event as React.MouseEvent).clientY;
     }
 
     // If this is a root node or active parent, show simple info
@@ -618,7 +695,7 @@ const GenealogyPage = () => {
         path: [],
         fromPersonName: nodes['root']?.name || 'You',
         isLoading: false,
-        position: { x: event.clientX, y: event.clientY }
+        position: { x: clientX, y: clientY }
       });
       return;
     }
@@ -629,13 +706,7 @@ const GenealogyPage = () => {
     }
 
     // Calculate the path from root to this node
-    const path: string[] = [];
-    let currentNode: UniverseNode | null = node;
-    
-    while (currentNode && currentNode.parentId && currentNode.id !== 'root') {
-      path.unshift(currentNode.relation.toLowerCase());
-      currentNode = nodes[currentNode.parentId];
-    }
+    const path = getPathToNode(node);
 
     console.log("Calculated hover path:", path);
     hoverPathRef.current = path;
@@ -649,66 +720,66 @@ const GenealogyPage = () => {
       path: path,
       fromPersonName: nodes['root']?.name || 'You',
       isLoading: true,
-      position: { x: event.clientX, y: event.clientY }
+      position: { x: clientX, y: clientY }
     });
 
     // Set a timeout to calculate relation after 300ms (debounce)
     const timeout = setTimeout(async () => {
       try {
         const result = await calculateRelationFromPath(path);
-        
+
         if (result) {
           // Create Tamil path for the explanation
           const tamilPath = path.map(step => getTamilRelation(step));
-          
+
           setHoverInfo({
             label: result.label || getRelationLabel(node.relation, isTamil),
             englishLabel: result.english_label || node.relation,
-            explanation: result.explanation || 
-              (isTamil 
+            explanation: result.explanation ||
+              (isTamil
                 ? `${tamilPath.join(' → ')} உறவுமுறை`
                 : `Relationship: ${path.join(' → ')}`),
             path: path,
             fromPersonName: nodes['root']?.name || 'You',
             isLoading: false,
-            position: { x: event.clientX, y: event.clientY }
+            position: { x: clientX, y: clientY }
           });
         } else {
           // Fallback to simple relation
-          const relationPath = path.length > 0 
-            ? path.join(' → ') 
+          const relationPath = path.length > 0
+            ? path.join(' → ')
             : 'Direct relation';
-          
+
           // Create Tamil path for fallback
           const tamilPath = path.map(step => getTamilRelation(step)).join(' → ');
 
           setHoverInfo({
             label: getRelationLabel(node.relation, isTamil),
             englishLabel: node.relation,
-            explanation: isTamil 
+            explanation: isTamil
               ? `${tamilPath} உறவுமுறை`
               : `Relationship: ${relationPath}`,
             path: path,
             fromPersonName: nodes['root']?.name || 'You',
             isLoading: false,
-            position: { x: event.clientX, y: event.clientY }
+            position: { x: clientX, y: clientY }
           });
         }
       } catch (error) {
         console.error("Error in hover calculation:", error);
         // Fallback to simple relation
         const tamilPath = path.map(step => getTamilRelation(step)).join(' → ');
-        
+
         setHoverInfo({
           label: getRelationLabel(node.relation, isTamil),
           englishLabel: node.relation,
-          explanation: isTamil 
+          explanation: isTamil
             ? `${tamilPath || 'உறவுமுறை கணக்கிட முடியவில்லை'}`
             : 'Could not calculate relationship',
           path: path,
           fromPersonName: nodes['root']?.name || 'You',
           isLoading: false,
-          position: { x: event.clientX, y: event.clientY }
+          position: { x: clientX, y: clientY }
         });
       }
     }, 300);
@@ -719,10 +790,10 @@ const GenealogyPage = () => {
   const handleNodeHoverLeave = useCallback(() => {
     // Clear timeout if still pending
     if (hoverTimeout) {
-      clearTimeout(hoverTimeout);
+      clearTimeout(hoverTimeout as any);
       setHoverTimeout(null);
     }
-    
+
     // Reset hover path and info
     hoverPathRef.current = [];
     setHoverPath([]);
@@ -742,143 +813,136 @@ const GenealogyPage = () => {
   }, [handleNodeHoverLeave]);
 
   // ============ HOVER TOOLTIP COMPONENT ============
-  // ============ HOVER TOOLTIP COMPONENT ============
-const HoverTooltip = () => {
-  if (!hoverInfo) return null;
+  const HoverTooltip = () => {
+    if (!hoverInfo) return null;
 
-  // Get Tamil path
-  const tamilPath = hoverInfo.path.map(step => getTamilRelation(step));
-  
-  // Calculate position for tooltip
-  const tooltipStyle: React.CSSProperties = {
-    position: 'fixed' as const,
-    zIndex: 1000,
-    backgroundColor: 'white',
-    border: '1px solid #e5e7eb',
-    borderRadius: '12px',
-    boxShadow: '0 20px 40px rgba(0, 0, 0, 0.1), 0 4px 8px rgba(0, 0, 0, 0.06)',
-    padding: '16px',
-    minWidth: '280px',
-    maxWidth: '320px',
-    pointerEvents: 'none' as const,
-    transition: 'opacity 0.2s, transform 0.2s',
-  };
+    // Get Tamil path
+    const tamilPath = hoverInfo.path.map(step => getTamilRelation(step));
 
-  // Position near the mouse or hovered element
-  if (hoverElement && hoverInfo.position) {
-    const rect = hoverElement.getBoundingClientRect();
-    const containerRect = containerRef.current?.getBoundingClientRect();
-    
-    if (containerRect) {
-      const top = rect.top - containerRect.top - 120;
-      const left = rect.left - containerRect.left + (rect.width / 2);
-      
-      tooltipStyle.top = `${top}px`;
-      tooltipStyle.left = `${left}px`;
+    // Calculate position for tooltip
+    const tooltipStyle: React.CSSProperties = {
+      position: 'fixed' as const,
+      zIndex: 1000,
+      backgroundColor: 'white',
+      border: '1px solid #e5e7eb',
+      borderRadius: '12px',
+      boxShadow: '0 20px 40px rgba(0, 0, 0, 0.1), 0 4px 8px rgba(0, 0, 0, 0.06)',
+      padding: '16px',
+      minWidth: '280px',
+      maxWidth: '320px',
+      pointerEvents: 'none' as const,
+      transition: 'opacity 0.2s, transform 0.2s',
+    };
+
+    // Position near the mouse or hovered element
+    if (hoverElement && hoverInfo.position) {
+      const rect = hoverElement.getBoundingClientRect();
+      const containerRect = containerRef.current?.getBoundingClientRect();
+
+      if (containerRect) {
+        const top = rect.top - containerRect.top - 120;
+        const left = rect.left - containerRect.left + (rect.width / 2);
+
+        tooltipStyle.top = `${top}px`;
+        tooltipStyle.left = `${left}px`;
+        tooltipStyle.transform = 'translateX(-50%)';
+      }
+    } else if (hoverInfo.position) {
+      // Follow mouse
+      tooltipStyle.top = `${hoverInfo.position.y - 150}px`;
+      tooltipStyle.left = `${hoverInfo.position.x}px`;
       tooltipStyle.transform = 'translateX(-50%)';
     }
-  } else if (hoverInfo.position) {
-    // Follow mouse
-    tooltipStyle.top = `${hoverInfo.position.y - 150}px`;
-    tooltipStyle.left = `${hoverInfo.position.x}px`;
-    tooltipStyle.transform = 'translateX(-50%)';
-  }
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 10, scale: 0.95 }}
-      className="fixed z-[100] bg-white border border-gray-300 rounded-xl shadow-2xl p-4 min-w-[280px] max-w-[320px] pointer-events-none backdrop-blur-sm bg-white/95"
-      style={tooltipStyle}
-    >
-      <div className="flex items-start gap-3 mb-3">
-        <div className="p-2 bg-blue-100 rounded-lg">
-          <Info size={20} className="text-blue-600" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-gray-800 text-lg truncate">
-            {hoverInfo.isLoading ? (isTamil ? 'கணக்கிடுகிறது...' : 'Calculating...') : hoverInfo.label}
-          </h3>
-         
-        </div>
-      </div>
-
-      {/* Path visualization - Show Tamil path for Tamil language, English path for English language */}
-      {hoverInfo.path.length > 0 && (
-        <div className="mb-3 p-3 bg-gray-50 rounded-lg">
-          <div className="text-xs font-medium text-gray-500 mb-2">
-            {isTamil ? `${hoverInfo.fromPersonName} ன் பாதை:` : `Path from ${hoverInfo.fromPersonName}:`}
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+        className="fixed z-100 border border-gray-300 rounded-xl shadow-2xl p-4 min-w-70 max-w-[320px] pointer-events-none backdrop-blur-sm bg-white/95" style={tooltipStyle}
+      >
+        <div className="flex items-start gap-3 mb-3">
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <Info size={20} className="text-blue-600" />
           </div>
-          
-          {/* Show Tamil path only when language is Tamil */}
-          {isTamil && tamilPath.length > 0 && (
-            <div className="flex items-center justify-center gap-2 flex-wrap mb-2">
-              {tamilPath.map((step, index) => (
-                <React.Fragment key={`tamil-${index}`}>
-                  <div className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
-                    {step}
-                  </div>
-                  {index < tamilPath.length - 1 && (
-                    <ArrowRight size={12} className="text-gray-400" />
-                  )}
-                </React.Fragment>
-              ))}
-            </div>
-          )}
-          
-          {/* Show English path only when language is English */}
-          {!isTamil && (
-            <div className="flex items-center justify-center gap-2 flex-wrap">
-              {hoverInfo.path.map((step, index) => (
-                <React.Fragment key={`english-${index}`}>
-                  <div className="px-2 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded">
-                    {step}
-                  </div>
-                  {index < hoverInfo.path.length - 1 && (
-                    <ArrowRight size={12} className="text-gray-300" />
-                  )}
-                </React.Fragment>
-              ))}
-            </div>
-          )}
-          
-          {/* Path explanation in Tamil if available */}
-          {isTamil && (
-            <div className="mt-2 text-xs text-gray-500 italic">
-              {tamilPath.join(' → ')} உறவுமுறை
-            </div>
-          )}
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-gray-800 text-lg truncate">
+              {hoverInfo.isLoading ? (isTamil ? 'கணக்கிடுகிறது...' : 'Calculating...') : hoverInfo.label}
+            </h3>
+
+          </div>
         </div>
-      )}
 
-      {/* Explanation - Show in current language */}
-      <div className="text-sm text-gray-700 mb-3">
-        {isTamil ? 
-          (hoverInfo.isLoading ? 'உறவுமுறை கண்டறியப்படுகிறது...' : 
-            hoverInfo.explanation.includes('உறவுமுறை') ? hoverInfo.explanation : 
-            `${hoverInfo.explanation} உறவுமுறை`) 
-          : hoverInfo.explanation}
-      </div>
+        {/* Path visualization - Show Tamil path for Tamil language, English path for English language */}
+        {hoverInfo.path.length > 0 && (
+          <div className="mb-3 p-3 bg-gray-50 rounded-lg">
+            <div className="text-xs font-medium text-gray-500 mb-2">
+              {isTamil ? `${hoverInfo.fromPersonName} ன் பாதை:` : `Path from ${hoverInfo.fromPersonName}:`}
+            </div>
 
-      {/* Loading indicator */}
-      {hoverInfo.isLoading && (
-        <div className="flex items-center gap-2 text-sm text-blue-600">
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-          {isTamil ? 'உறவுமுறை கணக்கிடுகிறது...' : 'Calculating relationship...'}
+            {/* Show Tamil path only when language is Tamil */}
+            {isTamil && tamilPath.length > 0 && (
+              <div className="flex items-center justify-center gap-2 flex-wrap mb-2">
+                {tamilPath.map((step, index) => (
+                  <React.Fragment key={`tamil-${index}`}>
+                    <div className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                      {step}
+                    </div>
+                    {index < tamilPath.length - 1 && (
+                      <ArrowRight size={12} className="text-gray-400" />
+                    )}
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
+
+            {/* Show English path only when language is English */}
+            {!isTamil && (
+              <div className="flex items-center justify-center gap-2 flex-wrap">
+                {hoverInfo.path.map((step, index) => (
+                  <React.Fragment key={`english-${index}`}>
+                    <div className="px-2 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded">
+                      {step}
+                    </div>
+                    {index < hoverInfo.path.length - 1 && (
+                      <ArrowRight size={12} className="text-gray-300" />
+                    )}
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
+
+
+          </div>
+        )}
+
+        {/* Explanation - Show in current language */}
+        <div className="text-sm text-gray-700 mb-3">
+          {isTamil ?
+            (hoverInfo.isLoading ? 'உறவுமுறை கண்டறியப்படுகிறது...' :
+              hoverInfo.explanation.includes('உறவுமுறை') ? hoverInfo.explanation :
+                `${hoverInfo.explanation} உறவுமுறை`)
+            : hoverInfo.explanation}
         </div>
-      )}
 
-      {/* Tip */}
-      
-    </motion.div>
-  );
-};
+        {/* Loading indicator */}
+        {hoverInfo.isLoading && (
+          <div className="flex items-center gap-2 text-sm text-blue-600">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+            {isTamil ? 'உறவுமுறை கணக்கிடுகிறது...' : 'Calculating relationship...'}
+          </div>
+        )}
+
+        {/* Tip */}
+
+      </motion.div>
+    );
+  };
 
   // Handle search functionality
   useEffect(() => {
     if (searchQuery.trim()) {
-      const filtered = topButtons.filter(button => 
+      const filtered = topButtons.filter(button =>
         button.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (isTamil ? button.label.toLowerCase().includes(searchQuery.toLowerCase()) : false)
       );
@@ -910,14 +974,21 @@ const HoverTooltip = () => {
     }
   }, []);
 
-  // Function to add to navigation history
-  const addToNavigationHistory = useCallback((node: UniverseNode) => {
+  const addToNavigationHistory = useCallback((node: UniverseNode, calcRel?: string) => {
     setNavigationHistory(prev => {
       // Check if this node is already in history (avoid duplicates)
       const existingIndex = prev.findIndex(item => item.id === node.id);
 
       if (existingIndex !== -1) {
-        // If found, remove all items after it (for going back)
+        // If found, update its calculatedRelation if provided, otherwise just return the sliced history (going back)
+        if (calcRel) {
+          const newHistory = [...prev];
+          newHistory[existingIndex] = {
+            ...newHistory[existingIndex],
+            calculatedRelation: calcRel
+          };
+          return newHistory;
+        }
         return prev.slice(0, existingIndex + 1);
       }
 
@@ -946,12 +1017,13 @@ const HoverTooltip = () => {
         personId: node.personId,
         level: node.level,
         timestamp: Date.now(),
-        arrowLabel: arrowLabel
+        arrowLabel: arrowLabel,
+        calculatedRelation: calcRel
       }];
     });
   }, [nodes, isTamil]);
 
-  // Function to navigate to a specific point in history
+  // ============ UPDATED: Function to navigate to a specific point in history ============
   const navigateToHistoryItem = useCallback(async (item: NavigationHistoryItem, index: number) => {
     if (index === navigationHistory.length - 1) return; // Already at this item
 
@@ -959,74 +1031,507 @@ const HoverTooltip = () => {
     const targetNode = nodes[item.id];
 
     if (targetNode) {
-      // Handle node click based on node type
-      if (targetNode.id === 'root') {
-        expandNode('root');
-      } else if (targetNode.relation === 'Ashramam') {
-        expandAshramam(targetNode.id);
-      } else if (targetNode.isConnected && targetNode.personId) {
-        try {
-          const response = await genealogyService.getNextFlow(targetNode.personId);
-          const nextPerson = (response as any).person;
-          const nextRelations = (response as any).existing_relations;
-          const permissions = (response as any).permissions;
+      console.log(`Navigating to history item: ${item.id} (${item.name}) at index ${index}`);
 
-          if (nextPerson) {
-            const personName = (nextPerson.full_name || nextPerson.name || targetNode.name).toUpperCase();
-            const personGender = nextPerson.gender || 'F';
+      // First, update the navigation history to show only up to this point
+      setNavigationHistory(prev => prev.slice(0, index + 1));
 
-            setNodes(prev => ({
-              ...prev,
-              [targetNode.id]: {
-                ...prev[targetNode.id],
-                isOpen: true,
-                name: personName,
-                personId: nextPerson.id,
-                isUpdated: true,
-                isConnected: permissions?.is_connected,
-                isReadOnly: permissions?.is_readonly
+      // Set this node as the active parent (for highlighting)
+      setActiveParentId(targetNode.id);
+
+      // Center the view on this node - ZOOM IN to 0.8
+      setTransform({
+        x: -targetNode.position.x * 0.8,
+        y: -targetNode.position.y * 0.8,
+        scale: 0.8
+      });
+
+      // Check if this node is already open with its children
+      const hasChildren = Object.values(nodes).some(n => n.parentId === targetNode.id);
+
+      // If node doesn't have children or isn't open, expand it
+      if (!targetNode.isOpen || !hasChildren) {
+        console.log(`Expanding node ${targetNode.id} from navigation`);
+
+        // Handle expansion based on node type
+        if (targetNode.id === 'root') {
+          // For root node, expand with its gender
+          expandNode('root', targetNode.gender);
+        } else if (targetNode.relation === 'Ashramam') {
+          // For Ashramam, use special expansion
+          expandAshramam(targetNode.id);
+        } else if (targetNode.isConnected && targetNode.personId) {
+          // For connected nodes, load their next flow
+          try {
+            const response = await genealogyService.getNextFlow(targetNode.personId);
+            const nextPerson = (response as any).person;
+            const nextRelations = (response as any).existing_relations;
+            const permissions = (response as any).permissions;
+
+            if (nextPerson) {
+              const personName = (nextPerson.full_name || nextPerson.name || targetNode.name).toUpperCase();
+              const personGender = nextPerson.gender || 'F';
+
+              setNodes(prev => ({
+                ...prev,
+                [targetNode.id]: {
+                  ...prev[targetNode.id],
+                  isOpen: true,
+                  name: personName,
+                  personId: nextPerson.id,
+                  isUpdated: true,
+                  isConnected: permissions?.is_connected,
+                  isReadOnly: permissions?.is_readonly
+                }
+              }));
+
+              if (nextRelations) {
+                buildNodesFromRelationsForNextFlow(response, personGender, targetNode.id);
               }
-            }));
 
-            if (nextRelations) {
-              buildNodesFromRelationsForNextFlow(response, personGender, targetNode.id);
+              fetchGenerationInfo(nextPerson.id);
             }
+          } catch (e) {
+            console.error("Error in next flow:", e);
+            toast.error("Failed to load connected person");
 
-            fetchGenerationInfo(nextPerson.id);
+            // Fallback to default expansion
+            expandNode(targetNode.id, targetNode.gender);
+          }
+        } else if (targetNode.personId) {
+          // For nodes with personId but not connected, fetch their relations
+          try {
+            const relationsData = await genealogyService.getPersonRelations(targetNode.personId);
 
-            setTransform({
-              x: -targetNode.position.x * 0.8,
-              y: -targetNode.position.y * 0.8,
-              scale: 0.8
+            setNodes(prev => {
+              const nextNodes = { ...prev };
+
+              // First, mark this node as open
+              if (nextNodes[targetNode.id]) {
+                nextNodes[targetNode.id] = { ...nextNodes[targetNode.id], isOpen: true };
+              }
+
+              return nextNodes;
             });
 
-            setActiveParentId(targetNode.id);
+            // Build nodes from relations
+            buildNodesFromRelations(relationsData, targetNode.gender, targetNode.id);
+
+            // Fetch generation info for this person
+            if (targetNode.personId) {
+              fetchGenerationInfo(targetNode.personId);
+            }
+          } catch (error) {
+            console.error(`Error fetching relations for person ${targetNode.personId}:`, error);
+            // Fallback to default expansion
+            expandNode(targetNode.id, targetNode.gender);
           }
-        } catch (e) {
-          console.error("Error in next flow:", e);
-          toast.error("Failed to load connected person");
+        } else {
+          // For placeholder nodes, create default relations
+          expandNode(targetNode.id, targetNode.gender);
         }
       } else {
-        // For regular nodes, just select and show modal
-        setSelectedNode(targetNode);
-        setShowModal(true);
+        // Node is already open, just ensure it's properly centered and highlighted
+        console.log(`Node ${targetNode.id} already has children, just updating view`);
+
+        // If this is a node with personId but not the root, fetch generation info
+        if (targetNode.personId && targetNode.id !== 'root') {
+          fetchGenerationInfo(targetNode.personId);
+        }
       }
 
-      // Update history to show only up to this point
-      setNavigationHistory(prev => prev.slice(0, index + 1));
+      // Show success message
+      toast.success(`Navigated to ${targetNode.name} (Generation ${targetNode.level})`);
+    } else {
+      console.error(`Target node ${item.id} not found in current nodes`);
+
+      // If node not found, we might need to reload from personId
+      if (item.personId) {
+        try {
+          toast.loading(`Loading ${item.name}...`, { id: 'nav-loading' });
+
+          // Fetch person details
+          const personData = await genealogyService.getPersonDetails(item.personId);
+
+          if (personData) {
+            // Create a new node for this person
+            const newNode: UniverseNode = {
+              id: `nav-${personData.id}`,
+              name: personData.full_name.toUpperCase(),
+              relation: item.relation,
+              level: item.level,
+              parentId: null,
+              position: { x: 0, y: 0 }, // Will be positioned by build function
+              isOpen: true,
+              gender: personData.gender,
+              personId: personData.id,
+              isUpdated: true
+            };
+
+            // Fetch relations
+            const relationsData = await genealogyService.getPersonRelations(personData.id);
+
+            // Update nodes with this as the new root for this view
+            setNodes({
+              [newNode.id]: newNode
+            });
+
+            // Build relations around this node
+            buildNodesFromRelations(relationsData, personData.gender, newNode.id);
+
+            // Set as active parent
+            setActiveParentId(newNode.id);
+
+            // Center view - ZOOM IN to 0.8
+            setTransform({ x: 0, y: 0, scale: 0.8 });
+
+            // Update navigation history
+            setNavigationHistory(prev => {
+              const newHistory = prev.slice(0, index);
+              return [...newHistory, {
+                id: newNode.id,
+                name: newNode.name,
+                relation: newNode.relation,
+                personId: newNode.personId,
+                level: newNode.level,
+                timestamp: Date.now(),
+                arrowLabel: item.arrowLabel
+              }];
+            });
+
+            toast.success(`Loaded ${personData.full_name}`, { id: 'nav-loading' });
+          }
+        } catch (error) {
+          console.error("Error loading person from history:", error);
+          toast.error("Failed to load person", { id: 'nav-loading' });
+        }
+      }
     }
   }, [nodes, navigationHistory.length, fetchGenerationInfo]);
 
-  // Function to clear navigation history
-  const clearNavigationHistory = useCallback(() => {
-    setNavigationHistory([{
-      id: 'root',
-      name: t('Self'),
-      relation: 'Self',
-      level: 0,
-      timestamp: Date.now()
-    }]);
-  }, [t]);
+  // ============ NEW: useEffect to sync view when navigation history changes ============
+  useEffect(() => {
+    // When navigation history changes (especially when going back via buttons),
+    // ensure the active parent is set to the current node
+    if (navigationHistory.length > 0) {
+      const currentItem = navigationHistory[navigationHistory.length - 1];
+      const currentNode = nodes[currentItem.id];
+
+      if (currentNode) {
+        console.log(`History changed, setting active parent to: ${currentNode.id}`);
+        setActiveParentId(currentNode.id);
+
+        // Center view on current node - ZOOM IN to 0.8
+        setTransform({
+          x: -currentNode.position.x * 0.8,
+          y: -currentNode.position.y * 0.8,
+          scale: 0.8
+        });
+
+        // If this node has a personId but isn't expanded, ensure we fetch its data
+        if (currentNode.personId && currentNode.id !== 'root' && !currentNode.isOpen) {
+          // Check if node has children
+          const hasChildren = Object.values(nodes).some(n => n.parentId === currentNode.id);
+
+          if (!hasChildren) {
+            console.log(`Auto-expanding node ${currentNode.id} from history change`);
+
+            if (currentNode.isConnected) {
+              // For connected nodes, load next flow
+              genealogyService.getNextFlow(currentNode.personId)
+                .then(response => {
+                  const nextPerson = (response as any).person;
+                  if (nextPerson) {
+                    setNodes(prev => ({
+                      ...prev,
+                      [currentNode.id]: {
+                        ...prev[currentNode.id],
+                        isOpen: true
+                      }
+                    }));
+
+                    if ((response as any).existing_relations) {
+                      buildNodesFromRelationsForNextFlow(
+                        response,
+                        currentNode.gender || 'M',
+                        currentNode.id
+                      );
+                    }
+                  }
+                })
+                .catch(err => console.error("Error auto-expanding node:", err));
+            } else {
+              // For regular nodes, fetch relations
+              genealogyService.getPersonRelations(currentNode.personId)
+                .then(relationsData => {
+                  setNodes(prev => ({
+                    ...prev,
+                    [currentNode.id]: {
+                      ...prev[currentNode.id],
+                      isOpen: true
+                    }
+                  }));
+                  buildNodesFromRelations(relationsData, currentNode.gender, currentNode.id);
+                })
+                .catch(err => console.error("Error auto-expanding node:", err));
+            }
+          }
+        }
+      }
+    }
+  }, [navigationHistory, nodes]);
+
+  // ============ UPDATED: Debounced mobile search for the modal using /api/auth/api/mobile-search/ ============
+  useEffect(() => {
+    const searchMobileNumber = async () => {
+      if (phoneNumber.length >= 3) {
+        setIsSearchingMobile(true);
+        try {
+          // Call the mobile search API endpoint
+          const response = await api.get(`/api/auth/api/mobile-search/`, {
+            params: { q: phoneNumber }
+          });
+
+          // The API returns { results: [...], total: number, query: string }
+          if (response.data && response.data.results) {
+            setMobileSearchResults(response.data.results);
+          } else {
+            setMobileSearchResults([]);
+          }
+        } catch (error) {
+          console.error("Error searching mobile numbers:", error);
+          setMobileSearchResults([]);
+        } finally {
+          setIsSearchingMobile(false);
+        }
+      } else {
+        setMobileSearchResults([]);
+      }
+    };
+
+    const timer = setTimeout(searchMobileNumber, 500);
+    return () => clearTimeout(timer);
+  }, [phoneNumber]);
+
+  // NEW: Debounced search for MAIN search bar using genealogy API
+  useEffect(() => {
+    const searchMain = async () => {
+      // Trim and remove non-digits if searching by number, or just trim if name? 
+      // The API endpoint seems to support "q" parameter which can be anything.
+      // But the user request specifically says "search mobile no".
+      // The example request is "?q=612".
+
+      if (searchMobile.trim().length >= 3) {
+        // Don't set isSearching to true here locally as it might cause UI flicker with the spinner
+        // just let it fetch quietly for suggestions
+        try {
+          const response = await genealogyService.searchPersons(searchMobile);
+          if (response.success && response.suggestions && response.suggestions.length > 0) {
+            setSearchSuggestions(response.suggestions);
+          } else {
+            // NEW: Show "No user found" as a disabled suggestion
+            setSearchSuggestions([{
+              id: -1,
+              full_name: isTamil ? 'பயனர் யாரும் இல்லை' : 'No user found',
+              mobile_number: '',
+              relation_label: ''
+            }]);
+          }
+        } catch (error) {
+          console.error("Error searching persons:", error);
+          // Show error/no found state
+          setSearchSuggestions([{
+            id: -1,
+            full_name: isTamil ? 'பயனர் யாரும் இல்லை' : 'No user found',
+            mobile_number: '',
+            relation_label: ''
+          }]);
+        }
+      } else {
+        setSearchSuggestions([]);
+      }
+    };
+
+    const timer = setTimeout(searchMain, 300); // Debounce 300ms
+    return () => clearTimeout(timer);
+  }, [searchMobile, isTamil]);
+
+  // NEW: Handle clicking a suggestion
+  const handleSuggestionClick = async (suggestion: any) => {
+    // If it's a "no user found" item, do nothing
+    if (suggestion.id === -1) {
+      return;
+    }
+
+    setSearchMobile('');
+    setSearchSuggestions([]); // Clear suggestions
+
+    try {
+      setIsSearching(true);
+      toast.loading(isTamil ? `${suggestion.full_name} தேடுகிறது...` : `Loading ${suggestion.full_name}...`, { id: 'search-nav' });
+
+      // Fetch full details
+      const personData = await genealogyService.getPersonDetails(suggestion.id);
+
+      if (personData) {
+        toast.success(isTamil ? `${personData.full_name} கண்டறியப்பட்டார்` : `Found: ${personData.full_name}`, { id: 'search-nav' });
+
+        // Navigate to this person - Make them the ROOT of the view
+        const newNode: UniverseNode = {
+          id: 'root', // ID MUST be root to be the center
+          name: personData.full_name.toUpperCase(),
+          relation: 'Self',
+          level: 0,
+          parentId: null,
+          position: { x: 0, y: 0 },
+          isOpen: true,
+          personId: personData.id,
+          isUpdated: true,
+          gender: personData.gender,
+          image: personData.image
+        };
+
+        // Fetch relations
+        const relationsData = await genealogyService.getPersonRelations(personData.id);
+
+        // Update nodes - RESET everything to just this new person and their relations
+        setNodes({
+          'root': newNode
+        });
+
+        // Build relations around this new root
+        buildNodesFromRelations(relationsData, personData.gender, 'root');
+        setActiveParentId('root');
+
+        // Center view - ZOOM IN 
+        setTransform({ x: 0, y: 0, scale: 0.8 });
+
+        // Update navigation history
+        setNavigationHistory(prev => {
+          return [...prev, {
+            id: 'root', // Must match the node ID
+            name: newNode.name,
+            relation: 'Search Result',
+            personId: newNode.personId,
+            level: 0,
+            timestamp: Date.now()
+          }];
+        });
+
+        // Also fetch generation info for this new person
+        fetchGenerationInfo(personData.id);
+
+      }
+    } catch (error) {
+      console.error("Navigation error:", error);
+      toast.error(isTamil ? 'நபரை ஏற்ற முடியவில்லை' : 'Failed to load person', { id: 'search-nav' });
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // ============ UPDATED: Handle mobile search using the new API ============
+  const handleMobileSearch = async (overridePhone?: string) => {
+    const phoneToSearch = overridePhone || phoneNumber;
+    if (!phoneToSearch.trim()) {
+      toast.error(isTamil ? 'தயவுசெய்து மொபைல் எண்ணை உள்ளிடவும்' : 'Please enter a mobile number');
+      return;
+    }
+
+    const cleanedPhone = phoneToSearch.replace(/\D/g, '');
+    if (cleanedPhone.length < 3) {
+      toast.error(isTamil ? 'குறைந்தது 3 எண்களை உள்ளிடவும்' : 'Please enter at least 3 digits');
+      return;
+    }
+
+    try {
+      setIsSearching(true);
+
+      // Use the new mobile search API
+      const response = await api.get(`/api/auth/api/mobile-search/`, {
+        params: { q: cleanedPhone }
+      });
+
+      const results = response.data?.results || [];
+
+      if (results && results.length > 0) {
+        // Use the first result as the target user
+        const targetUser = results[0];
+
+        toast.loading(isTamil ? 'பயனர் தகவலை ஏற்றுகிறது...' : 'Loading user information...', { id: 'search-loading' });
+
+        try {
+          // Try to get person details using the user ID
+          const personData = await genealogyService.getPersonDetails(targetUser.id);
+
+          if (personData) {
+            toast.success(isTamil ? `${personData.full_name} கண்டறியப்பட்டார்` : `Found: ${personData.full_name}`, { id: 'search-loading' });
+
+            // Navigate to this person
+            const newNode: UniverseNode = {
+              id: `search-${personData.id}`,
+              name: personData.full_name.toUpperCase(),
+              relation: 'Search Result',
+              level: 0,
+              parentId: null,
+              position: { x: 0, y: 0 }, // We'll center the view
+              isOpen: true,
+              personId: personData.id,
+              isUpdated: true,
+              gender: personData.gender,
+              image: personData.image
+            };
+
+            // Fetch their relations
+            const relationsData = await genealogyService.getPersonRelations(personData.id);
+
+            // Update nodes to show this person's tree
+            setNodes({
+              [newNode.id]: newNode
+            });
+
+            buildNodesFromRelations(relationsData, personData.gender, newNode.id);
+            setActiveParentId(newNode.id);
+
+            // Update transform to center - ZOOM IN to 0.8
+            setTransform({ x: 0, y: 0, scale: 0.8 });
+
+            // Clear search
+            setPhoneNumber('');
+            setMobileSearchResults([]);
+            setShowPhoneModal(false);
+            setShowModal(false);
+          } else {
+            toast.error(isTamil ? 'நபர் விவரங்களை கண்டறிய முடியவில்லை' : 'Could not find person details', { id: 'search-loading' });
+          }
+        } catch (error) {
+          console.error("Error fetching person details:", error);
+          toast.error(isTamil ? 'நபர் விவரங்களை ஏற்ற முடியவில்லை' : 'Failed to load person details', { id: 'search-loading' });
+        }
+      } else {
+        toast.error(isTamil ? 'இந்த எண் பதிவேட்டில் இல்லை' : 'Mobile number not found in directory', { id: 'search-loading' });
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+      toast.error(isTamil ? 'தேடலில் தோல்வி' : 'Search failed', { id: 'search-loading' });
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const goToRoot = useCallback(() => {
+    if (navigationHistory.length > 0) {
+      navigateToHistoryItem(navigationHistory[0], 0);
+      toast.success(isTamil ? 'தொடக்கத்திற்கு சென்றது' : 'Returned to start');
+    }
+  }, [navigationHistory, navigateToHistoryItem, isTamil]);
+
+  const handleBack = useCallback(() => {
+    if (navigationHistory.length > 1) {
+      const prevIndex = navigationHistory.length - 2;
+      navigateToHistoryItem(navigationHistory[prevIndex], prevIndex);
+    }
+  }, [navigationHistory, navigateToHistoryItem]);
 
   // Get filtered relations based on gender
   const getFilteredRelations = useCallback((parentGender?: string) => {
@@ -1079,7 +1584,7 @@ const HoverTooltip = () => {
         if (!nextNodes[childId]) {
           nextNodes[childId] = {
             id: childId,
-            name: nodeId === 'root' ? rel : `${rel} of ${node.name}`,
+            name: rel, // Simplified: just 'Father', 'Mother', etc.
             relation: rel,
             relationLabel: getRelationLabel(rel, isTamil),
             level: node.level + 1,
@@ -1090,8 +1595,8 @@ const HoverTooltip = () => {
             },
             isOpen: false,
             gender: childGender,
-            personId: Math.floor(Math.random() * 1000) + 2,
-            isUpdated: false
+            isUpdated: false,
+            isConnected: false // Placeholder nodes are not connected
           };
 
           console.log(`Created default node: ${childId} - ${rel}`);
@@ -1120,7 +1625,8 @@ const HoverTooltip = () => {
           ...prev['root'],
           name: personData.full_name.toUpperCase() || 'YOU',
           gender: personData.gender || 'M',
-          personId: personData.id
+          personId: personData.id,
+          image: getFullImageUrl(personData.image) // Ensure image is linked
         }
       }));
 
@@ -1218,10 +1724,14 @@ const HoverTooltip = () => {
             const matchId = `${match.from_person}-${match.to_person}-${match.relation_code}`;
             usedApiIds.add(matchId);
 
+            // IMPORTANT: Check if this person is connected (has linked user)
             const isConnected = !!(match as any).to_person_info?.linked_user ||
               !!(match as any).from_person_info?.linked_user ||
               (match as any).is_connected ||
-              (match as any).status === 'confirmed';
+              (match as any).status === 'confirmed' ||
+              (match as any).linked_user !== null ||
+              (match as any).to_person_info?.id !== undefined ||
+              (match as any).from_person_info?.id !== undefined;
 
             nodesToCreate.push({
               name: personName.toUpperCase(),
@@ -1231,21 +1741,21 @@ const HoverTooltip = () => {
               gender: ['Mother', 'Wife', 'Elder Sister', 'Younger Sister', 'Daughter'].includes(relType) ? 'F' : 'M',
               personId: personId,
               isUpdated: true,
-              isConnected: !!isConnected,
-              isReadOnly: relationsData.permissions?.is_readonly
+              isConnected: isConnected, // Set based on actual connection status
+              isReadOnly: relationsData.permissions?.is_readonly,
+              image: getFullImageUrl((match as any).image || (match as any).person?.image || (match as any).to_person_info?.image || (match as any).from_person_info?.image)
             });
           });
         } else {
-          // Placeholder
+          // Placeholder - NOT CONNECTED
           const childGender = ['Mother', 'Wife', 'Elder Sister', 'Younger Sister', 'Daughter'].includes(relType) ? 'F' : 'M';
           nodesToCreate.push({
             name: relType,
             relation: relType,
             relationLabel: getRelationLabel(relType, isTamil),
             gender: childGender,
-            personId: Math.floor(Math.random() * 1000) + 1000,
             isUpdated: false,
-            isConnected: false,
+            isConnected: false, // Placeholders are not connected
             isReadOnly: relationsData.permissions?.is_readonly
           });
         }
@@ -1276,10 +1786,14 @@ const HoverTooltip = () => {
 
           const relationLabel = getDisplayLabel(rel.relation_label);
 
+          // IMPORTANT: Check if this person is connected (has linked user)
           const isConnected = !!(rel as any).to_person_info?.linked_user ||
             !!(rel as any).from_person_info?.linked_user ||
             (rel as any).is_connected ||
-            (rel as any).status === 'confirmed';
+            (rel as any).status === 'confirmed' ||
+            (rel as any).linked_user !== null ||
+            (rel as any).to_person_info?.id !== undefined ||
+            (rel as any).from_person_info?.id !== undefined;
 
           const personId = isOutgoing ? rel.to_person : rel.from_person;
           const personName = isOutgoing ? rel.to_person_name : rel.from_person_name;
@@ -1292,8 +1806,9 @@ const HoverTooltip = () => {
             gender: ['Mother', 'Wife', 'Elder Sister', 'Younger Sister', 'Daughter'].includes(uiRel) ? 'F' : 'M',
             personId: personId,
             isUpdated: true,
-            isConnected: !!isConnected,
-            isReadOnly: relationsData.permissions?.is_readonly
+            isConnected: isConnected, // Set based on actual connection status
+            isReadOnly: relationsData.permissions?.is_readonly,
+            image: getFullImageUrl((rel as any).image || (rel as any).person?.image || (rel as any).to_person_info?.image || (rel as any).from_person_info?.image)
           });
           usedApiIds.add(matchId);
         }
@@ -1324,11 +1839,13 @@ const HoverTooltip = () => {
       console.log(`Finished building ${count} nodes for ${sourceNodeId}`);
 
       // Update source node info if permissions available
-      if (relationsData.permissions) {
+      const existingSource = cleanedNodes[sourceNodeId] || prev[sourceNodeId];
+      if (existingSource) {
         cleanedNodes[sourceNodeId] = {
-          ...sourceNode,
-          isConnected: relationsData.permissions.is_connected,
-          isReadOnly: relationsData.permissions.is_readonly
+          ...existingSource,
+          isOpen: true, // Crucial: keep the flower open
+          isConnected: relationsData.permissions?.is_connected ?? existingSource.isConnected,
+          isReadOnly: relationsData.permissions?.is_readonly ?? existingSource.isReadOnly
         };
       }
 
@@ -1343,7 +1860,9 @@ const HoverTooltip = () => {
     setNodes(prev => {
       const cleanedNodes: { [key: string]: UniverseNode } = {};
       Object.entries(prev).forEach(([id, node]) => {
-        if (node.parentId !== sourceNodeId) {
+        // Keep all nodes that are not children of the node we are rebuilding
+        // Also keep the source node itself
+        if (node.parentId !== sourceNodeId || id === sourceNodeId) {
           cleanedNodes[id] = node;
         }
       });
@@ -1422,11 +1941,15 @@ const HoverTooltip = () => {
               : `${match.from_person}-${match.to_person}-${match.relation_code}`;
             usedApiIds.add(matchId);
 
+            // IMPORTANT: Check if this person is connected (has linked user)
             const isConnected = !!(match as any).person?.linked_user ||
               !!(match as any).to_person_info?.linked_user ||
               !!(match as any).from_person_info?.linked_user ||
               (match as any).is_connected ||
-              (match as any).status === 'confirmed';
+              (match as any).status === 'confirmed' ||
+              (match as any).linked_user !== null ||
+              (match as any).to_person_info?.id !== undefined ||
+              (match as any).from_person_info?.id !== undefined;
 
             nodesToCreate.push({
               name: personName.toUpperCase(),
@@ -1436,22 +1959,21 @@ const HoverTooltip = () => {
               gender: ['Mother', 'Wife', 'Elder Sister', 'Younger Sister', 'Daughter'].includes(relType) ? 'F' : 'M',
               personId: personId,
               isUpdated: true,
-              isConnected: !!isConnected,
+              isConnected: isConnected, // Set based on actual connection status
               isReadOnly: permissions?.is_readonly,
-              image: (match as any).image || (match as any).person?.image || (match as any).to_person_info?.image || (match as any).from_person_info?.image
+              image: getFullImageUrl((match as any).image || (match as any).person?.image || (match as any).to_person_info?.image || (match as any).from_person_info?.image)
             });
           });
         } else {
-          // Placeholder
+          // Placeholder - NOT CONNECTED
           const childGender = ['Mother', 'Wife', 'Elder Sister', 'Younger Sister', 'Daughter'].includes(relType) ? 'F' : 'M';
           nodesToCreate.push({
-            name: sourceNodeId === 'root' ? relType : `${relType} of ${sourceNode.name}`,
+            name: relType,
             relation: relType,
             relationLabel: getRelationLabel(relType, isTamil),
             gender: childGender,
-            personId: Math.floor(Math.random() * 1000) + 1000,
             isUpdated: false,
-            isConnected: false,
+            isConnected: false, // Placeholders are not connected
             isReadOnly: permissions?.is_readonly
           });
         }
@@ -1496,11 +2018,15 @@ const HoverTooltip = () => {
 
           const relationLabel = getDisplayLabel(rel.relation_label, true);
 
+          // IMPORTANT: Check if this person is connected (has linked user)
           const isConnected = !!(rel as any).person?.linked_user ||
             !!(rel as any).to_person_info?.linked_user ||
             !!(rel as any).from_person_info?.linked_user ||
             (rel as any).is_connected ||
-            (rel as any).status === 'confirmed';
+            (rel as any).status === 'confirmed' ||
+            (rel as any).linked_user !== null ||
+            (rel as any).to_person_info?.id !== undefined ||
+            (rel as any).from_person_info?.id !== undefined;
 
           const personId = isNextFlowItem ? (rel as any).person_id : (String(rel.from_person) === String(sourceNode.personId) ? rel.to_person : rel.from_person);
           const personName = isNextFlowItem ? (rel as any).name : (String(rel.from_person) === String(sourceNode.personId) ? rel.to_person_name : rel.from_person_name);
@@ -1513,9 +2039,9 @@ const HoverTooltip = () => {
             gender: ['Mother', 'Wife', 'Elder Sister', 'Younger Sister', 'Daughter'].includes(uiRel) ? 'F' : 'M',
             personId: personId,
             isUpdated: true,
-            isConnected: !!isConnected,
+            isConnected: isConnected, // Set based on actual connection status
             isReadOnly: permissions?.is_readonly,
-            image: (rel as any).image || (rel as any).person?.image || (rel as any).to_person_info?.image || (rel as any).from_person_info?.image
+            image: getFullImageUrl((rel as any).image || (rel as any).person?.image || (rel as any).to_person_info?.image || (rel as any).from_person_info?.image)
           });
           usedApiIds.add(matchId);
         }
@@ -1543,17 +2069,19 @@ const HoverTooltip = () => {
       });
 
       // Update source node info if permissions available
-      if (permissions) {
+      const currentSource = prev[sourceNodeId];
+      if (currentSource) {
         cleanedNodes[sourceNodeId] = {
-          ...sourceNode,
-          isConnected: permissions.is_connected,
-          isReadOnly: permissions.is_readonly
+          ...currentSource,
+          isOpen: true,
+          isConnected: permissions?.is_connected ?? currentSource.isConnected,
+          isReadOnly: permissions?.is_readonly ?? currentSource.isReadOnly
         };
       }
 
       return cleanedNodes;
     });
-  }, [getFilteredRelations, isTamil]);
+  }, [getFilteredRelations, isTamil, profile.gender]);
 
   const fetchExistingRelationsForNode = useCallback(async (personId: number, nodeId: string, nodeGender: string, isNextFlow: boolean = false) => {
     try {
@@ -1619,11 +2147,15 @@ const HoverTooltip = () => {
               const matchId = `${match.from_person}-${match.to_person}-${match.relation_code}`;
               usedApiIds.add(matchId);
 
+              // IMPORTANT: Check if this person is connected (has linked user)
               const isConnected = !!(match as any).person?.linked_user ||
                 !!(match as any).to_person_info?.linked_user ||
                 !!(match as any).from_person_info?.linked_user ||
                 (match as any).is_connected ||
-                (match as any).status === 'confirmed';
+                (match as any).status === 'confirmed' ||
+                (match as any).linked_user !== null ||
+                (match as any).to_person_info?.id !== undefined ||
+                (match as any).from_person_info?.id !== undefined;
 
               nodesToCreate.push({
                 name: relatedPersonName.toUpperCase(),
@@ -1633,12 +2165,12 @@ const HoverTooltip = () => {
                 gender: ['Mother', 'Wife', 'Elder Sister', 'Younger Sister', 'Daughter'].includes(relType) ? 'F' : 'M',
                 personId: relatedPersonId,
                 isUpdated: true,
-                isConnected: !!isConnected,
-                image: (match as any).image || (match as any).person?.image || (match as any).to_person_info?.image || (match as any).from_person_info?.image
+                isConnected: isConnected, // Set based on actual connection status
+                image: getFullImageUrl((match as any).image || (match as any).person?.image || (match as any).to_person_info?.image || (match as any).from_person_info?.image)
               });
             });
           } else {
-            // Placeholder
+            // Placeholder - NOT CONNECTED
             const childGender = ['Mother', 'Wife', 'Elder Sister', 'Younger Sister', 'Daughter'].includes(relType) ? 'F' : 'M';
             nodesToCreate.push({
               name: nodeId === 'root' ? relType : `${relType} of ${node.name}`,
@@ -1646,7 +2178,8 @@ const HoverTooltip = () => {
               relationLabel: getRelationLabel(relType, isTamil),
               gender: childGender,
               personId: Math.floor(Math.random() * 1000) + 5000,
-              isUpdated: false
+              isUpdated: false,
+              isConnected: false // Placeholders are not connected
             });
           }
         });
@@ -1677,11 +2210,15 @@ const HoverTooltip = () => {
 
             const relationLabel = getDisplayLabel(rel.relation_label, isNextFlow);
 
+            // IMPORTANT: Check if this person is connected (has linked user)
             const isConnected = !!(rel as any).person?.linked_user ||
               !!(rel as any).to_person_info?.linked_user ||
               !!(rel as any).from_person_info?.linked_user ||
               (rel as any).is_connected ||
-              (rel as any).status === 'confirmed';
+              (rel as any).status === 'confirmed' ||
+              (rel as any).linked_user !== null ||
+              (rel as any).to_person_info?.id !== undefined ||
+              (rel as any).from_person_info?.id !== undefined;
 
             nodesToCreate.push({
               name: rPersonName.toUpperCase(),
@@ -1691,8 +2228,8 @@ const HoverTooltip = () => {
               gender: ['Mother', 'Wife', 'Elder Sister', 'Younger Sister', 'Daughter'].includes(uiRel) ? 'F' : 'M',
               personId: rPersonId,
               isUpdated: true,
-              isConnected: !!isConnected,
-              image: (rel as any).image || (rel as any).person?.image || (rel as any).to_person_info?.image || (rel as any).from_person_info?.image
+              isConnected: isConnected, // Set based on actual connection status
+              image: getFullImageUrl((rel as any).image || (rel as any).person?.image || (rel as any).to_person_info?.image || (rel as any).from_person_info?.image)
             });
             usedApiIds.add(matchId);
           }
@@ -1725,7 +2262,7 @@ const HoverTooltip = () => {
       console.error(`Error fetching relations for person ${personId}:`, error);
       createDefaultRelationsForNode(nodeId, nodeGender);
     }
-  }, [getFilteredRelations, createDefaultRelationsForNode, isTamil]);
+  }, [getFilteredRelations, createDefaultRelationsForNode, isTamil, profile.gender]);
 
   // Function to refresh family tree data
   const refreshFamilyTree = useCallback(async () => {
@@ -1879,7 +2416,10 @@ const HoverTooltip = () => {
       try {
         // 1. Fetch user profile first
         const profileData = await authService.getMyProfile();
-        setProfile(profileData);
+        setProfile({
+          ...profileData,
+          image: getFullImageUrl(profileData.image as string)
+        });
         console.log("1. Profile data fetched:", profileData);
 
         // 2. Fetch genealogy person 'me' details next
@@ -1908,11 +2448,11 @@ const HoverTooltip = () => {
             gender: personGender,
             personId: personIdToUse,
             isUpdated: isFromAPI,
-            image: (profileData as any).image
+            image: getFullImageUrl((profileData as any).image || (personMe as any)?.image)
           }
         }));
 
-        // ✅ Update Navigation History with actual profile name
+        //  Update Navigation History with actual profile name
         setNavigationHistory(prev => {
           if (prev.length > 0 && prev[0].id === 'root') {
             const newHistory = [...prev];
@@ -1931,8 +2471,18 @@ const HoverTooltip = () => {
           buildNodesFromRelations(relationsData, personGender);
         }
 
-        // Auto-expand root node after data is loaded
+        // After setting nodes, ensure root is centered and zoomed out
         setTimeout(() => {
+          // Center the view on root node with zoom out
+          if (nodes['root']) {
+            setTransform({
+              x: -nodes['root'].position.x * 0.3,
+              y: -nodes['root'].position.y * 0.3,
+              scale: 0.3
+            });
+          }
+
+          // Auto-expand root node after data is loaded
           expandNode('root', personGender);
           hasAutoExpanded.current = true;
         }, 800);
@@ -1989,7 +2539,7 @@ const HoverTooltip = () => {
       const nextNodes = { ...prev };
       nextNodes[nodeId] = { ...node, isOpen: true };
 
-      if (node.personId && node.personId > 0) {
+      if (node.isUpdated && node.personId && node.personId > 0) {
         fetchExistingRelationsForNode(node.personId, nodeId, overrideGender || node.gender || 'M', isNextFlow);
       } else {
         const nodeGender = overrideGender || (nodeId === 'root' ? (profile.gender || currentPerson?.gender || 'M') : (node.gender || 'M'));
@@ -2004,13 +2554,13 @@ const HoverTooltip = () => {
     setNodes(prev => {
       const node = prev[nodeId];
       if (!node || node.relation !== 'Ashramam') return prev;
-  
+
       setActiveParentId(nodeId);
       const nextNodes = { ...prev };
       nextNodes[nodeId] = { ...node, isOpen: true };
-  
+
       const radius = RADIUS_BASE;
-      
+
       // Tamil relationship names for Ashramam members (from your image)
       const tamilRelations = [
         'தம்பி', 'அண்ணன்', 'அண்ணி', 'அக்கா', 'அம்மா', 'அப்பா',
@@ -2018,7 +2568,7 @@ const HoverTooltip = () => {
         'அத்தை', 'சித்தி', 'மைத்துனன்', 'மைத்துனி', 'மருமகன்',
         'மருமகள்', 'பேரன்', 'பெர்த்தி', 'தாத்தா', 'பாட்டி', 'தம்பி'
       ];
-      
+
       // English relationship names (for fallback)
       const englishRelations = [
         'Younger Brother', 'Elder Brother', 'Sister-in-law', 'Elder Sister', 'Mother', 'Father',
@@ -2026,26 +2576,26 @@ const HoverTooltip = () => {
         'Paternal Aunt', 'Aunt', 'Brother-in-law', 'Sister-in-law', 'Son-in-law',
         'Daughter-in-law', 'Grandson', 'Granddaughter', 'Grandfather', 'Grandmother', 'Younger Brother'
       ];
-  
+
       for (let i = 0; i < 23; i++) {
         const angle = (i * (360 / 23)) * (Math.PI / 180);
         const childId = `${nodeId}-leaf-${i}`;
-        
+
         // Choose name based on language
         const relationName = isTamil ? tamilRelations[i] : englishRelations[i];
-        
+
         // Determine gender based on relation
         let gender = 'M'; // default
         const tamilRelation = tamilRelations[i];
-        if (tamilRelation.includes('அம்மா') || tamilRelation.includes('அண்ணி') || 
-            tamilRelation.includes('அக்கா') || tamilRelation.includes('மகள்') ||
-            tamilRelation.includes('மாமி') || tamilRelation.includes('அத்தை') ||
-            tamilRelation.includes('சித்தி') || tamilRelation.includes('மைத்துனி') ||
-            tamilRelation.includes('மருமகள்') || tamilRelation.includes('பெர்த்தி') ||
-            tamilRelation.includes('பாட்டி')) {
+        if (tamilRelation.includes('அம்மா') || tamilRelation.includes('அண்ணி') ||
+          tamilRelation.includes('அக்கா') || tamilRelation.includes('மகள்') ||
+          tamilRelation.includes('மாமி') || tamilRelation.includes('அத்தை') ||
+          tamilRelation.includes('சித்தி') || tamilRelation.includes('மைத்துனி') ||
+          tamilRelation.includes('மருமகள்') || tamilRelation.includes('பெர்த்தி') ||
+          tamilRelation.includes('பாட்டி')) {
           gender = 'F';
         }
-  
+
         if (!nextNodes[childId]) {
           nextNodes[childId] = {
             id: childId,
@@ -2062,7 +2612,8 @@ const HoverTooltip = () => {
             isOpen: false,
             gender: gender,
             personId: Math.floor(Math.random() * 1000) + 100,
-            isUpdated: false
+            isUpdated: false,
+            isConnected: false // Ashramam members are not connected by default
           };
         }
       }
@@ -2178,10 +2729,11 @@ const HoverTooltip = () => {
     setIsDragging(false);
   };
 
-  // Update handleNodeClick to add to navigation history
+  // Update handleNodeClick to add to navigation history AND ZOOM IN
   const handleNodeClick = (node: UniverseNode) => {
     // Clear hover info when clicking
     handleNodeHoverLeave();
+    setInvitationError(null);
 
     const isRoot = node.id === 'root';
     const isHighlighted = isRoot ||
@@ -2194,9 +2746,17 @@ const HoverTooltip = () => {
       return;
     }
 
-    // Add to navigation history
-    addToNavigationHistory(node);
+    // Get path and calculate relation for history side panel
+    const getRelationAndAddHistory = async () => {
+      const path = getPathToNode(node);
+      const calcRelResult = await calculateRelationFromPath(path);
+      // Add to navigation history
+      addToNavigationHistory(node, calcRelResult?.label);
+    };
 
+    getRelationAndAddHistory();
+
+    // ZOOM IN: Scale to 0.8 when clicking any node
     const targetScale = 0.8;
     setTransform({
       x: -node.position.x * targetScale,
@@ -2208,6 +2768,7 @@ const HoverTooltip = () => {
       return;
     }
 
+    // IMPORTANT: Check if node is connected and not root
     if (node.isConnected && node.id !== 'root') {
       setSelectedNode(node);
       setShowModal(true);
@@ -2422,7 +2983,7 @@ const HoverTooltip = () => {
     }
   };
 
-  // ✅ UPDATED: Handle send invitation with father name detection
+  // UPDATED: Handle send invitation with father name detection
   const handleSendInvitation = async () => {
     if (!selectedNode) return;
 
@@ -2431,11 +2992,18 @@ const HoverTooltip = () => {
       return;
     }
 
-    const phoneRegex = /^[0-9]{10,15}$/;
+    const phoneRegex = /^[0-9]{10}$/;
     const cleanedPhone = phoneNumber.replace(/\D/g, '');
 
-    if (!phoneRegex.test(cleanedPhone)) {
-      toast.error('Please enter a valid 10-15 digit mobile number');
+    if (cleanedPhone.length !== 10 || !phoneRegex.test(cleanedPhone)) {
+      toast.error('Please enter a valid 10 digit mobile number');
+      return;
+    }
+
+    // Validate Indian mobile number prefix
+    const validPrefixes = ['6', '7', '8', '9'];
+    if (!validPrefixes.includes(cleanedPhone.charAt(0))) {
+      toast.error('Please enter a valid Indian mobile number starting with 6, 7, 8, or 9');
       return;
     }
 
@@ -2472,7 +3040,7 @@ const HoverTooltip = () => {
         return;
       }
 
-      // ✅ NEW: Detect father name for child relations
+      // NEW: Detect father name for child relations
       let fatherName = '';
       const isChildRelation = selectedNode.relation.toLowerCase().includes('son') ||
         selectedNode.relation.toLowerCase().includes('daughter');
@@ -2493,27 +3061,48 @@ const HoverTooltip = () => {
             console.log(`Parsed father name from node name: ${fatherName}`);
           }
         }
-
-        // If we found a father name, add it to the invitation
-        if (fatherName) {
-          console.log(`Including father name in invitation: ${fatherName}`);
-        }
       }
 
       console.log(`Sending invitation for person ID: ${personId} to phone: ${cleanedPhone}`);
 
+      // ✅ FIXED: Create the payload object as expected by the service
+      const invitationPayload: SendInvitationPayload = {
+        mobile_number: cleanedPhone,
+        relation_to_me: mapRelationToAPI(selectedNode.relation), // Add the required relation_to_me
+      };
+
+      // Add optional fields if they exist
+      if (fatherName) {
+        invitationPayload.father_name = fatherName;
+      }
+
+      // You can also add a custom message if needed
+      invitationPayload.message = `Please join our family tree as ${selectedNode.relation}`;
+
+      // Call the service with the correct parameters
       const response = await genealogyService.sendInvitation(
         personId,
-        cleanedPhone,
-        fatherName // ✅ Pass father name as optional parameter
+        invitationPayload  // ✅ Now passing an object, not separate parameters
       );
 
       console.log("Invitation response:", response);
 
-      // Be more lenient: if the API call didn't throw and returned something, treat as success
-      if (response && (response.success !== false)) {
-        // ✅ Show success message
+      // Recognize "already connected" as a success/info state
+      const isAlreadyConnected = response?.status === 'already_connected' ||
+        response?.code === 'already_connected_confirmed' ||
+        (response as any)?.existing_connection === true;
+
+      if (response && (response.success !== false || isAlreadyConnected)) {
         let successMessage = response.message || 'Invitation sent successfully!';
+
+        if (isAlreadyConnected) {
+          setInvitationError(successMessage);
+          toast(successMessage, { icon: 'ℹ️' });
+          // Refresh tree to show the confirmed connection
+          refreshFamilyTree();
+          return;
+        }
+
         if (fatherName) {
           successMessage += ` Will be linked to father: ${fatherName}`;
         }
@@ -2544,13 +3133,30 @@ const HoverTooltip = () => {
       if (error.response?.status === 404) {
         toast.error('Person not found. Please save the name first before sending invitation.');
       } else if (error.response?.status === 400) {
-        toast.error(error.response?.data?.message || 'Invalid request. Please check the information.');
+        const errorData = error.response.data;
+        const isAlreadyConnected = errorData?.status === 'already_connected' ||
+          errorData?.code === 'already_connected_confirmed' ||
+          errorData?.existing_connection === true;
+
+        if (isAlreadyConnected) {
+          const errMsg = errorData?.message || 'Already connected';
+          setInvitationError(errMsg);
+          toast(errMsg, { icon: 'ℹ️' });
+          refreshFamilyTree();
+          return;
+        } else {
+          // Display mismatch or other 400 errors in the modal
+          const errMsg = errorData?.error || errorData?.details?.message || errorData?.message || 'Invalid request. Please check the information.';
+          setInvitationError(errMsg);
+          toast.error(errMsg);
+        }
       } else {
-        toast.error(
+        const errMsg = error.response?.data?.error ||
           error.response?.data?.message ||
-          error.response?.data?.error ||
-          'Failed to send invitation. Please try again.'
-        );
+          error.response?.data?.details?.message ||
+          'Failed to send invitation. Please try again.';
+        setInvitationError(errMsg);
+        toast.error(errMsg);
       }
     } finally {
       setIsSendingInvitation(false);
@@ -2559,6 +3165,12 @@ const HoverTooltip = () => {
 
   const handleAddPeopleClick = () => {
     if (selectedNode) {
+      // Proactively expand and focus the node so placeholders appear
+      if (!selectedNode.isOpen) {
+        expandNode(selectedNode.id);
+      }
+      setActiveParentId(selectedNode.id);
+
       setAddingPeopleName('');
       setShowAddPeopleModal(true);
     }
@@ -2670,8 +3282,12 @@ const HoverTooltip = () => {
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-screen bg-[#f8fafc] overflow-hidden cursor-grab active:cursor-grabbing select-none touch-none"
-      style={{ touchAction: 'none' }}
+      className="relative w-full h-[calc(100vh-64px)] md:h-[calc(100vh-128px)] bg-[#f8fafc] overflow-hidden cursor-grab active:cursor-grabbing select-none touch-none"
+      style={{
+        touchAction: 'none',
+        height: '100vh',
+        maxHeight: '100vh'
+      }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={() => setIsDragging(false)}
@@ -2689,120 +3305,158 @@ const HoverTooltip = () => {
         {hoverInfo && <HoverTooltip />}
       </AnimatePresence>
 
-      {/* Top Section with Search Bar and 6 Cards */}
-      <AnimatePresence>
-        {!showModal && !showAddPeopleModal && !showNameEditModal && !showPhoneModal && activeButtonIndex === null && (
-          <motion.div
-            initial={{ y: -100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -100, opacity: 0 }}
-            className="fixed top-20 left-0 right-0 z-[60] flex flex-col items-center p-4 bg-linear-to-b from-white/60 to-transparent pointer-events-none"
-            onWheel={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
+      {/* ============ TOP LEFT SEARCH AND NAVIGATION ============ */}
+      <div
+        className="absolute top-4 left-4 z-40 flex flex-col gap-3 max-w-[calc(100vw-300px)]"
+        onMouseDown={e => e.stopPropagation()}
+        onMouseMove={e => e.stopPropagation()}
+        onWheel={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3">
+          {/* Home Button */}
+          <button
+            onClick={goToRoot}
+            className="bg-white hover:bg-gray-50 text-blue-600 p-2.5 rounded-full shadow-lg border border-blue-100 flex items-center justify-center transition-all duration-300 hover:scale-110 group shrink-0"
+            title={isTamil ? 'தொடக்கத்திற்கு செல்' : 'Go to Root'}
           >
-            {/* Search Bar - Centered Above Cards */}
-            <div className="mb-4 pointer-events-auto">
-              <div className="relative w-80">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#8B2323] h-4 w-4" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder={isTamil ? "தேடு..." : "Search..."}
-                    className="w-full pl-10 pr-8 py-2 rounded-lg border-2 border-[#8B2323] bg-white/95 backdrop-blur-sm shadow-md focus:outline-none focus:ring-2 focus:ring-[#8B2323] focus:border-transparent text-gray-800 placeholder-gray-500 text-sm"
-                    onFocus={() => setShowSearchResults(true)}
-                    onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-[#8B2323]"
-                    >
-                      <X size={16} />
-                    </button>
-                  )}
+            <Home size={20} className="group-hover:rotate-12 transition-transform" />
+          </button>
+
+          {/* Back Button - For generation by generation navigation */}
+          <button
+            onClick={handleBack}
+            disabled={navigationHistory.length <= 1}
+            className={`
+              p-2.5 rounded-full shadow-lg border flex items-center justify-center transition-all duration-300 hover:scale-110 group shrink-0
+              ${navigationHistory.length <= 1
+                ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed'
+                : 'bg-white text-blue-600 border-blue-100 hover:bg-gray-50'}
+            `}
+            title={isTamil ? 'முந்தைய தலைமுறைக்குச் செல்ல' : 'Go to Previous Generation'}
+          >
+            <ChevronLeft size={22} className="group-hover:-translate-x-0.5 transition-transform" />
+          </button>
+
+          {/* Search Bar */}
+          <div className="relative flex flex-col items-start">
+            <div className="relative group z-50">
+              <div className={`
+                absolute inset-0 bg-blue-500/10 rounded-2xl blur-md group-hover:blur-lg transition-all
+                ${isSearching ? 'opacity-100' : 'opacity-0'}
+              `}></div>
+              <div className="relative flex items-center bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                <div className="pl-4 text-gray-400">
+                  <Search size={18} />
                 </div>
-                
-                {/* Search Results Dropdown */}
-                {showSearchResults && searchQuery.trim() && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 max-h-60 overflow-y-auto z-50">
-                    {filteredButtons.length > 0 ? (
-                      <>
-                        {filteredButtons.map((button) => (
-                          <button
-                            key={button.id}
-                            onClick={() => {
-                              setActiveButtonIndex(button.id - 1);
-                              setSearchQuery('');
-                              setShowSearchResults(false);
-                            }}
-                            className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0 text-left"
-                          >
-                            <div className="w-8 h-8 rounded-md overflow-hidden flex-shrink-0">
-                              <img 
-                                src={button.image} 
-                                alt={button.label} 
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                            <div>
-                              <div className="font-semibold text-gray-800 text-sm whitespace-pre-line">
-                                {button.label}
-                              </div>
-                              <div className="text-xs text-gray-500 mt-1">
-                                {button.id === 1 && (isTamil ? "உறவினர் பட்டியலைக் காண்க" : "View relatives list")}
-                                {button.id === 2 && (isTamil ? "பதிவிறக்க வசதிகள்" : "Download options")}
-                                {button.id === 3 && (isTamil ? "கலாச்சார பெட்டகம்" : "Cultural heritage box")}
-                                {button.id === 4 && (isTamil ? "உறவுமுறை அறிய" : "Know relationship")}
-                                {button.id === 5 && (isTamil ? "அரட்டை" : "Chat with family")}
-                                {button.id === 6 && (isTamil ? "அமைப்புகள்" : "Settings")}
-                              </div>
-                            </div>
-                          </button>
-                        ))}
-                        <div className="px-4 py-2 bg-gray-50 text-xs text-gray-500 border-t border-gray-200">
-                          {filteredButtons.length} {isTamil ? "முடிவுகள்" : "results"} found
-                        </div>
-                      </>
-                    ) : (
-                      <div className="px-4 py-3 text-center text-gray-500">
-                        <div className="text-sm font-medium mb-1">
-                          {isTamil ? "முடிவுகள் கிடைக்கவில்லை" : "No results found"}
-                        </div>
-                        <div className="text-xs">
-                          {isTamil ? "வேறு வார்த்தையைத் தேட முயற்சிக்கவும்" : "Try searching with different terms"}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                <input
+                  type="text"
+                  value={searchMobile}
+                  onChange={(e) => setSearchMobile(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      // If suggestions exist, pick the first one? Or call the old handleMobileSearch?
+                      // Standard behavior is usually picking the first suggestion or just searching.
+                      // Given we have handleMobileSearch, we can keep it as fallback or primarily rely on suggestions.
+                      // But handleMobileSearch uses a different service!
+                      // Let's stick to handleSuggestionClick if there are suggestions, otherwise handleMobileSearch.
+                      if (searchSuggestions.length > 0) {
+                        handleSuggestionClick(searchSuggestions[0]);
+                      } else {
+                        handleMobileSearch();
+                      }
+                    }
+                  }}
+                  placeholder={isTamil ? 'மொபைல் எண் தேடல்...' : 'Search Mobile No...'}
+                  className="py-2.5 px-3 w-40 md:w-64 bg-transparent outline-none text-sm font-semibold text-gray-700 placeholder:text-gray-400 placeholder:font-normal"
+                />
+                <button
+                  onClick={() => handleMobileSearch()}
+                  disabled={isSearching || !searchMobile.trim()}
+                  className={`
+                    h-full px-5 py-2.5 text-sm font-bold transition-all
+                    ${isSearching || !searchMobile.trim()
+                      ? 'bg-gray-100 text-gray-400'
+                      : 'bg-linear-to-r from-blue-600 to-blue-500 text-white hover:from-blue-700 hover:to-blue-600'}
+                  `}
+                >
+                  {isSearching ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  ) : (
+                    isTamil ? 'தேடு' : 'Search'
+                  )}
+                </button>
               </div>
             </div>
 
-            {/* 6 Cards - Centered Below Search */}
-            <div className="flex gap-4 pointer-events-auto">
-              {topButtons.map((btn, idx) => (
+            {/* Suggestions Dropdown */}
+            {searchSuggestions.length > 0 && (
+              <div className="absolute top-full left-0 mt-2 w-72 md:w-80 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-60 animate-fadeIn max-h-[60vh] overflow-y-auto">
+                {searchSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.id}
+                    onClick={() => handleSuggestionClick(suggestion)}
+                    disabled={suggestion.id === -1}
+                    className={`w-full text-left px-4 py-3 border-b border-gray-50 last:border-0 flex items-center justify-between group transition-colors 
+                      ${suggestion.id === -1 ? 'cursor-default opacity-60' : 'hover:bg-blue-50'}
+                    `}
+                  >
+                    <div>
+                      <div className="font-bold text-gray-800 text-sm">{suggestion.full_name}</div>
+                      {suggestion.id !== -1 && (
+                        <div className="text-xs text-gray-500 flex flex-wrap items-center gap-2 mt-1">
+                          <span className="font-mono text-gray-400">{suggestion.mobile_number}</span>
+
+
+                        </div>
+                      )}
+                    </div>
+                    {suggestion.id !== -1 && <ChevronRight size={14} className="text-gray-300 group-hover:text-blue-500 transition-colors shrink-0 ml-2" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Navigation Ribbon / Breadcrumbs */}
+        {navigationHistory.length > 1 && (
+          <div className="flex items-center bg-white/80 backdrop-blur-sm border border-blue-100 rounded-xl shadow-lg px-2 py-1.5 overflow-x-auto scrollbar-hide max-w-full animate-fadeIn border-l-4 border-l-blue-500">
+            {navigationHistory.map((item, index) => (
+              <React.Fragment key={`${item.id}-${index}`}>
                 <button
-                  key={btn.id}
-                  onClick={() => setActiveButtonIndex(activeButtonIndex === idx ? null : idx)}
+                  onClick={() => navigateToHistoryItem(item, index)}
                   className={`
-                    px-4 py-2 rounded-md border-2 transition-all duration-300 min-w-[110px] text-center
-                    flex flex-col items-center justify-center font-bold text-[11px] leading-tight
-                    ${activeButtonIndex === idx
-                      ? 'bg-[#8B2323] text-white border-[#8B2323] shadow-lg scale-105'
-                      : 'bg-white text-[#8B2323] border-[#8B2323] hover:bg-red-50 hover:shadow-md'}
+                    flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all whitespace-nowrap
+                    ${index === navigationHistory.length - 1
+                      ? 'bg-blue-50 text-blue-700 font-bold scale-105 shadow-xs'
+                      : 'text-gray-500 hover:bg-gray-100 hover:text-blue-600'}
                   `}
                 >
-                  {btn.label.split('\n').map((line, lidx) => (
-                    <div key={lidx}>{line}</div>
-                  ))}
+                  <div className={`
+                    w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-black
+                    ${index === navigationHistory.length - 1
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-200 text-gray-500'}
+                  `}>
+                    {index + 1}
+                  </div>
+                  <span className="text-xs uppercase tracking-tighter">
+                    {index === 0 ? (isTamil ? 'முதல் தலைமுறை' : '1st Gen') :
+                      index === navigationHistory.length - 1 ? (isTamil ? 'தற்போது' : 'Current') :
+                        (isTamil ? `${index + 1}-ம் தலைமுறை` : `Gen ${index + 1}`)}
+                  </span>
                 </button>
-              ))}
-            </div>
-          </motion.div>
+                {index < navigationHistory.length - 1 && (
+                  <div className="text-gray-300 mx-0.5">
+                    <ArrowRight size={12} />
+                  </div>
+                )}
+              </React.Fragment>
+            ))}
+          </div>
         )}
-      </AnimatePresence>
+      </div>
 
       {/* Image Overlay */}
       <AnimatePresence>
@@ -2811,7 +3465,7 @@ const HoverTooltip = () => {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="absolute inset-0 z-55 flex items-center justify-center bg-black/60 backdrop-blur-sm p-20 pt-32"
+            className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-20 pt-32"
             onClick={() => setActiveButtonIndex(null)}
           >
             <div className="relative w-full max-w-5xl h-full rounded-2xl overflow-hidden shadow-2xl bg-white group">
@@ -2982,12 +3636,32 @@ const HoverTooltip = () => {
                       <div key={item.id} className="relative flex flex-col items-center">
 
                         {/* Hexagonal Card - Compact size for professional look */}
-                        <div className="relative group cursor-pointer" onClick={() => navigateToHistoryItem(item, index)}>
+                        <div className="relative group cursor-pointer"
+                          onClick={() => {
+                            console.log(`Side panel clicked: ${item.name} at index ${index}`);
+                            navigateToHistoryItem(item, index);
+                          }}>
+                          {/* Relation Label to the Left - New Requested Feature */}
+                          {item.calculatedRelation && (
+                            <div className="absolute -left-20 top-1/2 -translate-y-1/2 w-16 text-right animate-fadeIn">
+                              <span className="text-[10px] font-black text-blue-600 bg-blue-50/80 backdrop-blur-xs px-2 py-0.5 rounded border border-blue-100 shadow-xs uppercase tracking-tighter">
+                                {item.calculatedRelation}
+                              </span>
+                            </div>
+                          )}
+
                           {/* Hexagon shape - further decreased size to w-24 as requested */}
                           <div className={`w-24 h-28 clip-path-hexagon flex flex-col items-center justify-center p-2 transition-all duration-300 ${isLast
                             ? 'bg-linear-to-br from-green-500 to-green-600 border-2 border-green-400 shadow-lg scale-110'
                             : 'bg-linear-to-br from-gray-100 to-gray-200 border border-gray-300 shadow-xs hover:border-green-300 hover:shadow-sm'
                             }`}>
+                            {/* User icon - conditionally rendered/styled */}
+                            {item.isUpdated && ( // Only show icon if node is updated
+                              <User
+                                size={28} // Assuming a default size, adjust as needed
+                                className={`${isLast ? 'text-white' : 'text-gray-400'}`}
+                              />
+                            )}
 
                             {/* Content */}
                             <div className="text-center space-y-0.5">
@@ -3036,19 +3710,41 @@ const HoverTooltip = () => {
                               <div className="w-0.5 h-4 bg-linear-to-b from-blue-400 to-blue-300"></div>
 
                               {/* Hexagonal arrow container */}
-                              <div className="relative my-1">
-                                {/* Outer hexagon */}
-                                <div className="w-10 h-10 rounded-xl bg-linear-to-r from-blue-500 to-blue-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-                                  {/* Inner triangle arrow */}
-                                  <div className="w-2 h-2 clip-path-arrow-down bg-white"></div>
-                                </div>
+                              <div className="relative my-2">
+                                {(() => {
+                                  const fullLabel = navigationHistory[index + 1]?.arrowLabel || 'Next';
+                                  // Split by arrow symbols
+                                  const labelParts = fullLabel.split(/->|→/);
+                                  const hasSplit = labelParts.length > 1;
+                                  const topLabel = hasSplit ? labelParts[0].trim() : '';
+                                  const bottomLabel = hasSplit ? labelParts[1].trim() : fullLabel;
 
-                                {/* Arrow label - showing relationship as requested */}
-                                <div className="absolute -bottom-5 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                                  <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full shadow-xs border border-blue-100 uppercase">
-                                    {navigationHistory[index + 1]?.arrowLabel || 'Next'}
-                                  </span>
-                                </div>
+                                  return (
+                                    <>
+                                      {/* Label ABOVE arrow (e.g., Magal) */}
+                                      {hasSplit && (
+                                        <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 whitespace-nowrap z-20">
+                                          <span className="text-[9px] font-bold text-blue-700 bg-white/90 px-2 py-0.5 rounded-full shadow-xs border border-blue-100 uppercase backdrop-blur-sm">
+                                            {topLabel}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {/* Outer hexagon */}
+                                      <div className="w-10 h-10 rounded-xl bg-linear-to-r from-blue-500 to-blue-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform z-10 relative">
+                                        {/* Inner triangle arrow */}
+                                        <div className="w-2 h-2 clip-path-arrow-down bg-white"></div>
+                                      </div>
+
+                                      {/* Label BELOW arrow (e.g., Appa) */}
+                                      <div className="absolute -bottom-5 left-1/2 transform -translate-x-1/2 whitespace-nowrap z-20">
+                                        <span className="text-[9px] font-bold text-blue-700 bg-white/90 px-2 py-0.5 rounded-full shadow-xs border border-blue-100 uppercase backdrop-blur-sm">
+                                          {bottomLabel}
+                                        </span>
+                                      </div>
+                                    </>
+                                  );
+                                })()}
                               </div>
 
                               <div className="w-0.5 h-6 bg-linear-to-b from-blue-300 to-blue-400"></div>
@@ -3098,7 +3794,7 @@ const HoverTooltip = () => {
         <div className="flex flex-col items-center justify-center flex-1 p-4">
           <div className="relative">
             {/* Hexagon for steps count */}
-            <div className="w-12 h-14 clip-path-hexagon-sm bg-gradient-to-br from-blue-100 to-blue-200 border border-blue-300 flex items-center justify-center shadow-md">
+            <div className="w-12 h-14 clip-path-hexagon-sm bg-linear-to-br from-blue-100 to-blue-200 border border-blue-300 flex items-center justify-center shadow-md">
               <span className="text-lg font-bold text-blue-700">{navigationHistory.length}</span>
             </div>
 
@@ -3120,7 +3816,7 @@ const HoverTooltip = () => {
           {/* Mini hexagons */}
           <div className="mt-6 flex flex-col items-center space-y-1">
             {[...Array(Math.min(3, navigationHistory.length))].map((_, i) => (
-              <div key={i} className="w-3 h-4 clip-path-hexagon-sm bg-gradient-to-br from-gray-300 to-gray-400"></div>
+              <div key={i} className="w-3 h-4 clip-path-hexagon-sm bg-linear-to-br from-gray-300 to-gray-400"></div>
             ))}
           </div>
         </div>
@@ -3150,7 +3846,7 @@ const HoverTooltip = () => {
       {/* Generation Info Box - Moved down to avoid clash with top bar */}
       {
         generationInfo && (
-          <div className="absolute top-48 left-4 z-50 bg-white/90 backdrop-blur-sm border border-gray-200 rounded-2xl p-4 shadow-xl min-w-[280px]">
+          <div className="absolute top-48 left-4 z-50 bg-white/90 backdrop-blur-sm border border-gray-200 rounded-2xl p-4 shadow-xl min-w-70">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-blue-100 rounded-lg">
@@ -3180,25 +3876,6 @@ const HoverTooltip = () => {
                   </span>
                   <span className="text-sm text-gray-500">people</span>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="p-2 bg-green-50 rounded-lg text-center">
-                  <div className="text-xs text-gray-600 mb-1">Immediate</div>
-                  <div className="text-lg font-semibold text-green-700">
-                    {generationInfo.member_counts.immediate_family}
-                  </div>
-                </div>
-                <div className="p-2 bg-purple-50 rounded-lg text-center">
-                  <div className="text-xs text-gray-600 mb-1">Extended</div>
-                  <div className="text-lg font-semibold text-purple-700">
-                    {generationInfo.member_counts.extended_family}
-                  </div>
-                </div>
-              </div>
-
-              <div className="text-xs text-gray-500 italic pt-2 border-t border-gray-200">
-                {generationInfo.generation.description}
               </div>
             </div>
           </div>
@@ -3362,7 +4039,7 @@ const HoverTooltip = () => {
 
               const parentGender = node.id === 'root' ? (currentPerson?.gender || profile.gender || 'M') : (node.gender || 'M');
               const relations = getFilteredRelations(parentGender);
-              const isDimmed = activeParentId !== node.id;
+              const isDimmed = activeParentId && activeParentId !== node.id;
               const children = getNodeChildren(node.id);
 
               return children.map((child) => {
@@ -3472,13 +4149,12 @@ const HoverTooltip = () => {
               const w = 90 * scaleFactor;
               const h = 105 * scaleFactor;
 
-              const isHighlighted = isRoot ||
+              const isHighlighted = !activeParentId ||
                 node.id === activeParentId ||
-                node.parentId === activeParentId ||
-                (activeParentId && nodes[activeParentId]?.parentId === node.id);
+                node.parentId === activeParentId;
 
-              let fillColor = isRoot ? "#2ecc71" : "#f39c12";
-              let strokeColor = isRoot ? "#27ae60" : "#d35400";
+              let fillColor = isRoot ? "#2ecc71" : "#9ca3af"; //  (medium gray)
+              let strokeColor = isRoot ? "#27ae60" : "#6b7280"; //  (dark gray)
 
               if (node.isUpdated) {
                 fillColor = "#10b981";
@@ -3507,38 +4183,44 @@ const HoverTooltip = () => {
                   onTouchStart={(e) => handleNodeTouchStart(node, e)}
                   onTouchEnd={handleNodeTouchEnd}
                 >
-                  {isRoot && profile.image ? (
+                  {isRoot && node.image ? (
                     <>
-                      {/* Hexagon with image - Improved version */}
-                      <g clipPath="url(#hexagonClip)">
-                        {/* White background behind image for better contrast */}
-                        <path
-                          d={`M 0,${-h / 2} L ${w / 2},${-h / 4} L ${w / 2},${h / 4} L 0,${h / 2} L ${-w / 2},${h / 4} L ${-w / 2},${-h / 4} Z`}
-                          fill="white"
-                          stroke="#ffffff"
-                          strokeWidth="3"
-                        />
-                        
-                        {/* Image with proper positioning */}
-                        <image
-                          href={profile.image}
-                          x={-w / 2}
-                          y={-h / 2}
-                          width={w}
-                          height={h}
-                          preserveAspectRatio="xMidYMid slice"
-                          clipPath="url(#hexagonClip)"
-                        />
-                        
-                        {/* Dark overlay for better text visibility */}
-                        <path
-                          d={`M 0,${-h / 2} L ${w / 2},${-h / 4} L ${w / 2},${h / 4} L 0,${h / 2} L ${-w / 2},${h / 4} L ${-w / 2},${-h / 4} Z`}
-                          fill="rgba(0,0,0,0.3)"
-                          stroke={strokeColor}
-                          strokeWidth="3"
-                        />
-                      </g>
-                      
+                      {/* Define clip path for hexagon */}
+                      <defs>
+                        <clipPath id={`hexagonClip-${node.id}`}>
+                          <path
+                            d={`M 0,${-h / 2} L ${w / 2},${-h / 4} L ${w / 2},${h / 4} L 0,${h / 2} L ${-w / 2},${h / 4} L ${-w / 2},${-h / 4} Z`}
+                          />
+                        </clipPath>
+                      </defs>
+
+                      {/* White background behind image for better contrast */}
+                      <path
+                        d={`M 0,${-h / 2} L ${w / 2},${-h / 4} L ${w / 2},${h / 4} L 0,${h / 2} L ${-w / 2},${h / 4} L ${-w / 2},${-h / 4} Z`}
+                        fill="white"
+                        stroke="#ffffff"
+                        strokeWidth="3"
+                      />
+
+                      {/* Image with proper positioning - Fixed href type issue */}
+                      <image
+                        href={typeof node.image === 'string' ? node.image : ''}
+                        x={-w / 2}
+                        y={-h / 2}
+                        width={w}
+                        height={h}
+                        preserveAspectRatio="xMidYMid slice"
+                        clipPath={`url(#hexagonClip-${node.id})`}
+                      />
+
+                      {/* Dark overlay for better text visibility */}
+                      <path
+                        d={`M 0,${-h / 2} L ${w / 2},${-h / 4} L ${w / 2},${h / 4} L 0,${h / 2} L ${-w / 2},${h / 4} L ${-w / 2},${-h / 4} Z`}
+                        fill="rgba(0,0,0,0.3)"
+                        stroke={strokeColor}
+                        strokeWidth="3"
+                      />
+
                       {/* Name text with better styling */}
                       <text
                         x="0"
@@ -3560,7 +4242,7 @@ const HoverTooltip = () => {
                       >
                         {node.name}
                       </text>
-                      
+
                       {/* Additional relation label if needed */}
                       <text
                         x="0"
@@ -3603,12 +4285,20 @@ const HoverTooltip = () => {
                               />
                             </div>
                           ) : (
-                            <User
-                              size={isRoot ? 26 : 18}
-                              color={isAshramam || isAshramamLeaf ? "white" :
-                                node.isUpdated ? "white" :
-                                  isRoot ? "white" : "black"}
-                            />
+                            node.isUpdated ? (
+                              <User
+                                size={isRoot ? 26 : 18}
+                                color={isAshramam || isAshramamLeaf ? "white" :
+                                  node.isUpdated ? "white" :
+                                    isRoot ? "white" : "black"}
+                              />
+                            ) : (
+                              <UserPlus
+                                size={14}
+                                color="black"
+                                className="opacity-40"
+                              />
+                            )
                           )}
                           <div className={`font-black uppercase leading-tight ${isRoot || isAshramam || isAshramamLeaf || node.isUpdated ?
                             "text-white text-[11px]" : "text-black text-[9px]"
@@ -3627,7 +4317,7 @@ const HoverTooltip = () => {
         </div>
       </div>
 
-      {/* Rest of your modal code remains the same */}
+      {/* Modal with Add People button showing for ALL nodes (including connected) */}
       <AnimatePresence>
         {showModal && selectedNode && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 px-4" onClick={() => setShowModal(false)}>
@@ -3641,9 +4331,106 @@ const HoverTooltip = () => {
 
               <h2 className="text-2xl font-bold text-white mb-1 pr-8">{selectedNode.name}</h2>
               <p className="text-slate-400 text-sm mb-6 uppercase tracking-wider font-semibold">{selectedNode.relation}</p>
+
+              {/* Modal Actions - CONDITIONAL BASED ON CONNECTION STATUS */}
               <div className="space-y-3">
-                {!selectedNode.isConnected && (
+                {selectedNode.isConnected ? (
+                  /* ✅ CONNECTED PERSON - Show only 2 buttons */
                   <>
+                    {/* Next Flower button */}
+                    <button
+                      onClick={async () => {
+                        if (selectedNode.isUpdated && selectedNode.personId) {
+                          try {
+                            const response = await genealogyService.getNextFlow(selectedNode.personId);
+
+                            // Extract person and relations from the response
+                            const nextPerson = (response as any).person;
+                            const permissions = (response as any).permissions;
+
+                            if (nextPerson) {
+                              const personName = (nextPerson.full_name || nextPerson.name || selectedNode.name).toUpperCase();
+                              const personGender = nextPerson.gender || 'F';
+
+                              // Always call building function to ensure placeholders are created if no relations exist
+                              buildNodesFromRelationsForNextFlow(response, personGender, selectedNode.id);
+
+                              // 3. Fetch generation info for the new person
+                              fetchGenerationInfo(nextPerson.id);
+
+                              // 4. Move transform to center on the NEW focus node
+                              setTransform({
+                                x: -selectedNode.position.x * 0.8,
+                                y: -selectedNode.position.y * 0.8,
+                                scale: 0.8
+                              });
+
+                              // ✅ Calculate relation before updating history
+                              const path = getPathToNode(selectedNode);
+                              const calcRelResult = await calculateRelationFromPath(path);
+
+                              // 5. Update active focus so other branches dim
+                              setActiveParentId(selectedNode.id);
+
+                              // 6. ✅ Update navigation history name and personId (if it was a placeholder)
+                              setNavigationHistory(prev => {
+                                const newHistory = [...prev];
+                                const lastIndex = newHistory.length - 1;
+                                if (lastIndex >= 0 && newHistory[lastIndex].id === selectedNode.id) {
+                                  newHistory[lastIndex] = {
+                                    ...newHistory[lastIndex],
+                                    name: personName,
+                                    personId: nextPerson.id,
+                                    calculatedRelation: calcRelResult?.label
+                                  };
+                                }
+                                return newHistory;
+                              });
+
+                              toast.success(`Viewing ${personName}'s tree`);
+                            }
+                          } catch (e) {
+                            console.error("Error in next flow:", e);
+                            toast.error("Failed to load connected person");
+                          }
+                        } else {
+                          // Logic for placeholders or special cases if needed
+                          if (selectedNode.relation === 'Ashramam') {
+                            expandAshramam(selectedNode.id);
+                          } else {
+                            // Always center and focus even for placeholder expansion
+                            setTransform({
+                              x: -selectedNode.position.x * 0.8,
+                              y: -selectedNode.position.y * 0.8,
+                              scale: 0.8
+                            });
+                            setActiveParentId(selectedNode.id);
+                            expandNode(selectedNode.id);
+                          }
+                        }
+                        setShowModal(false);
+                      }}
+                      className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors"
+                    >
+                      <span className="flex items-center"><Flower2 size={20} className="mr-3" /> {t('nextFlower')}</span>
+                      <span>→</span>
+                    </button>
+
+                    {/* Add People button */}
+                    <button
+                      onClick={handleAddPeopleClick}
+                      className="w-full py-4 bg-purple-600 hover:bg-purple-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors shadow-lg"
+                    >
+                      <span className="flex items-center">
+                        <UserPlus size={20} className="mr-3" /> {t('addPeople')}
+                      </span>
+                      <span>→</span>
+                    </button>
+                  </>
+                ) : (
+                  /* ❌ NON-CONNECTED PERSON (Placeholder) - Show all 4 buttons */
+                  <>
+                    {/* Edit Name button */}
                     <button
                       onClick={handleNameEditClick}
                       className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors"
@@ -3655,95 +4442,105 @@ const HoverTooltip = () => {
                       <span>→</span>
                     </button>
 
+                    {/* Connect button */}
                     <button onClick={() => {
+                      setInvitationError(null);
                       setShowPhoneModal(true);
                     }} className="w-full py-4 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors">
                       <span className="flex items-center"><Phone size={20} className="mr-3" /> {t('connect')}</span>
                       <span>→</span>
                     </button>
-                  </>
-                )}
 
-                <button
-                  onClick={async () => {
-                    if (selectedNode.isUpdated && selectedNode.personId) {
-                      try {
-                        const response = await genealogyService.getNextFlow(selectedNode.personId);
+                    {/* Next Flower button */}
+                    <button
+                      onClick={async () => {
+                        if (selectedNode.isUpdated && selectedNode.personId) {
+                          try {
+                            const response = await genealogyService.getNextFlow(selectedNode.personId);
 
-                        // Extract person and relations from the response
-                        const nextPerson = (response as any).person;
-                        const nextRelations = (response as any).existing_relations;
-                        const permissions = (response as any).permissions;
+                            // Extract person and relations from the response
+                            const nextPerson = (response as any).person;
+                            const permissions = (response as any).permissions;
 
-                        if (nextPerson) {
-                          const personName = (nextPerson.full_name || nextPerson.name || selectedNode.name).toUpperCase();
-                          const personGender = nextPerson.gender || 'F';
+                            if (nextPerson) {
+                              const personName = (nextPerson.full_name || nextPerson.name || selectedNode.name).toUpperCase();
+                              const personGender = nextPerson.gender || 'F';
 
-                          // 1. Point: Don't reset nodes! Update the clicked node to become open
-                          setNodes(prev => ({
-                            ...prev,
-                            [selectedNode.id]: {
-                              ...prev[selectedNode.id],
-                              isOpen: true,
-                              name: personName,
-                              personId: nextPerson.id,
-                              isUpdated: true,
-                              isConnected: permissions?.is_connected,
-                              isReadOnly: permissions?.is_readonly
+                              // Always call building function to ensure placeholders are created if no relations exist
+                              buildNodesFromRelationsForNextFlow(response, personGender, selectedNode.id);
+
+                              // 3. Fetch generation info for the new person
+                              fetchGenerationInfo(nextPerson.id);
+
+                              // 4. Move transform to center on the NEW focus node
+                              setTransform({
+                                x: -selectedNode.position.x * 0.8,
+                                y: -selectedNode.position.y * 0.8,
+                                scale: 0.8
+                              });
+
+                              // ✅ Calculate relation before updating history
+                              const path = getPathToNode(selectedNode);
+                              const calcRelResult = await calculateRelationFromPath(path);
+
+                              // 5. Update active focus so other branches dim
+                              setActiveParentId(selectedNode.id);
+
+                              // 6. ✅ Update navigation history name and personId (if it was a placeholder)
+                              setNavigationHistory(prev => {
+                                const newHistory = [...prev];
+                                const lastIndex = newHistory.length - 1;
+                                if (lastIndex >= 0 && newHistory[lastIndex].id === selectedNode.id) {
+                                  newHistory[lastIndex] = {
+                                    ...newHistory[lastIndex],
+                                    name: personName,
+                                    personId: nextPerson.id,
+                                    calculatedRelation: calcRelResult?.label
+                                  };
+                                }
+                                return newHistory;
+                              });
+
+                              toast.success(`Viewing ${personName}'s tree`);
                             }
-                          }));
-
-                          // 2. Build children from the API relations for THIS node
-                          // Use the special next_flow function
-                          if (nextRelations) {
-                            buildNodesFromRelationsForNextFlow(response, personGender, selectedNode.id);
+                          } catch (e) {
+                            console.error("Error in next flow:", e);
+                            toast.error("Failed to load connected person");
                           }
-
-                          // 3. Fetch generation info for the new person
-                          fetchGenerationInfo(nextPerson.id);
-
-                          // 4. Move transform to center on the NEW focus node
-                          setTransform({
-                            x: -selectedNode.position.x * 0.8,
-                            y: -selectedNode.position.y * 0.8,
-                            scale: 0.8
-                          });
-
-                          // 5. Update active focus so other branches dim
-                          setActiveParentId(selectedNode.id);
-
-                          toast.success(`Viewing ${personName}'s tree`);
+                        } else {
+                          // Logic for placeholders or special cases if needed
+                          if (selectedNode.relation === 'Ashramam') {
+                            expandAshramam(selectedNode.id);
+                          } else {
+                            // Always center and focus even for placeholder expansion
+                            setTransform({
+                              x: -selectedNode.position.x * 0.8,
+                              y: -selectedNode.position.y * 0.8,
+                              scale: 0.8
+                            });
+                            setActiveParentId(selectedNode.id);
+                            expandNode(selectedNode.id);
+                          }
                         }
-                      } catch (e) {
-                        console.error("Error in next flow:", e);
-                        toast.error("Failed to load connected person");
-                      }
-                    } else {
-                      // Logic for placeholders or special cases if needed
-                      if (selectedNode.relation === 'Ashramam') {
-                        expandAshramam(selectedNode.id);
-                      } else {
-                        expandNode(selectedNode.id);
-                      }
-                    }
-                    setShowModal(false);
-                  }}
-                  className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors"
-                >
-                  <span className="flex items-center"><Flower2 size={20} className="mr-3" /> {t('nextFlower')}</span>
-                  <span>→</span>
-                </button>
+                        setShowModal(false);
+                      }}
+                      className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors"
+                    >
+                      <span className="flex items-center"><Flower2 size={20} className="mr-3" /> {t('nextFlower')}</span>
+                      <span>→</span>
+                    </button>
 
-                {!selectedNode.isConnected && !selectedNode.isReadOnly && !EXCLUDED_FROM_ADD_PEOPLE.includes(selectedNode.relation) && (
-                  <button
-                    onClick={handleAddPeopleClick}
-                    className="w-full py-4 bg-purple-600 hover:bg-purple-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors shadow-lg"
-                  >
-                    <span className="flex items-center">
-                      <UserPlus size={20} className="mr-3" /> {t('addPeople')}
-                    </span>
-                    <span>→</span>
-                  </button>
+                    {/* Add People button */}
+                    <button
+                      onClick={handleAddPeopleClick}
+                      className="w-full py-4 bg-purple-600 hover:bg-purple-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors shadow-lg"
+                    >
+                      <span className="flex items-center">
+                        <UserPlus size={20} className="mr-3" /> {t('addPeople')}
+                      </span>
+                      <span>→</span>
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -3941,32 +4738,84 @@ const HoverTooltip = () => {
                     <input
                       type="tel"
                       value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                        setPhoneNumber(value);
+                        if (invitationError) setInvitationError(null);
+                      }}
                       placeholder={t('enterMobile')}
+                      maxLength={10}
                       className="w-full bg-slate-800 border border-slate-700 rounded-xl py-3 pl-10 pr-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                       disabled={isSendingInvitation}
                     />
+                    {isSearchingMobile && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-500"></div>
+                      </div>
+                    )}
                   </div>
+
+                  {/* Search Results in Modal - Using the new API response format */}
+                  {mobileSearchResults.length > 0 && (
+                    <div className="mt-2 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden max-h-40 overflow-y-auto shadow-xl">
+                      {mobileSearchResults.map((result) => (
+                        <button
+                          key={result.id}
+                          onClick={() => {
+                            setPhoneNumber(result.mobile_number || result.value);
+                            setMobileSearchResults([]);
+                            handleMobileSearch(result.mobile_number || result.value);
+                          }}
+                          className="w-full text-left px-4 py-2 text-slate-300 hover:bg-slate-700 hover:text-white transition-colors text-sm border-b border-slate-700 last:border-0 flex items-center justify-between"
+                        >
+                          <span>{result.label}</span>
+                          <ChevronRight size={14} className="text-slate-500" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <p className="text-slate-500 text-xs mt-2">
                     {t('enterOtpHint')}
                   </p>
+
+                  {/* Error Message Display inside the modal */}
+                  {invitationError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-2 animate-shake"
+                    >
+                      <Info size={16} className="text-red-500 mt-0.5 shrink-0" />
+                      <p className="text-red-500 text-xs font-semibold leading-relaxed">
+                        {invitationError}
+                      </p>
+                    </motion.div>
+                  )}
                 </div>
 
-                <div className="flex gap-3 pt-2">
+                <div className="flex gap-2 pt-2">
                   <button
                     onClick={() => {
                       setShowPhoneModal(false);
                       setPhoneNumber('');
                     }}
-                    className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors"
+                    className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors text-xs font-semibold"
                     disabled={isSendingInvitation}
                   >
                     {t('cancel')}
                   </button>
                   <button
+                    onClick={() => handleMobileSearch(phoneNumber)}
+                    disabled={isSearching || !phoneNumber.trim()}
+                    className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50 text-xs font-semibold"
+                  >
+                    <Search size={16} />
+                    {isTamil ? 'தேடு' : 'Search'}
+                  </button>
+                  <button
                     onClick={handleSendInvitation}
                     disabled={isSendingInvitation || !phoneNumber.trim()}
-                    className="flex-1 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs font-semibold"
                   >
                     {isSendingInvitation ? (
                       <>

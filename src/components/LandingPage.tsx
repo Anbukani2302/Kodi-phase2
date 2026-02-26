@@ -19,10 +19,11 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
     });
 
     const heroImages = [
-        "https://images.unsplash.com/photo-1581833971358-2c8b550f87b3?q=80&w=2071&auto=format&fit=crop",
-        "https://images.unsplash.com/photo-1511988617509-a57c8a288659?q=80&w=2071&auto=format&fit=crop",
-        "https://images.unsplash.com/photo-1542273917363-3b1817f69a2d?q=80&w=2074&auto=format&fit=crop",
-        "https://images.unsplash.com/photo-1593113598332-cd288d649433?q=80&w=2070&auto=format&fit=crop"
+        "/src/images/image2.png",
+        "/src/images/image3.png",
+        "/src/images/image4.png",
+        "/src/images/image5.png",
+        "/src/images/image6.png"
     ];
 
     useEffect(() => {
@@ -211,18 +212,17 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                         viewport={{ once: true }}
                         className="text-center mb-16"
                     >
-                        {/* ஹெடிங்கிற்கு லாஜோ நிறம் */}
-                        <h2 className="text-3xl md:text-5xl font-bold text-gray-900 mb-6 tracking-tight">
+                        <h2 className="text-2xl md:text-1 font-bold text-gray-900 mb-6 tracking-tight">
                             <span className="bg-linear-to-r from-amber-700 to-yellow-700 bg-clip-text text-transparent">
                                 {t('familyTreeMapping')}
                             </span>
-                            <span className="text-gray-800"> {t('benefitsTitle').replace(t('familyTreeMapping'), '')}</span>
+                            <span className="text-gray-800 "> {t('benefitsTitle').replace(t('familyTreeMapping'), '')}</span>
                         </h2>
-                        <div className="w-24 h-2 bg-linear-to-r from-amber-500 to-yellow-600 mx-auto rounded-full mb-6"></div>
-                        <p className="text-gray-600  max-w-3xl mx-auto leading-relaxed">
+                        <div className="w-24 h-2 bg-linear-to-r from-amber-500 to-yellow-600 mx-auto rounded-full mb-6 text-2xl"></div>
+                        <p className="text-gray-900 max-w-3xl mx-auto leading-relaxed text-2xl font-semibold">
                             {t('benefitsSubtitle')}
                         </p>
-                        <p className="text-amber-800 text-2xl max-w-3xl mx-auto leading-relaxed font-semibold mt-4">
+                        <p className="text-amber-800  max-w-3xl mx-auto leading-relaxed font-semibold mt-4">
                             {t('importantFactors')}
                         </p>
                     </motion.div>
@@ -354,7 +354,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                         >
                             <div className="relative rounded-[2.5rem] overflow-hidden shadow-2xl">
                                 <img
-                                    src="https://images.unsplash.com/photo-1593113598332-cd288d649433?q=80&w=2070&auto=format&fit=crop"
+                                    src="/src/images/image1.png"
                                     alt="Family Tree"
                                     className="w-full h-100 md:h-125 object-cover group-hover:scale-105 transition-transform duration-700"
                                 />
@@ -466,13 +466,16 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                     <div className="flex flex-col md:flex-row items-center justify-between gap-12">
                         <div className="flex flex-col items-center md:items-start space-y-4">
                             <div className="flex items-center space-x-3">
-                                <div className=" flex items-center justify-center">
-                                    <img
-                                        src="/src/images/logo.png"
-                                        alt="KODI Logo"
-                                        className="h-12 w-12 object-contain"
-                                    />
+                                <div className="flex items-center justify-center">
+                                    <div className="h-12 w-12 rounded-lg bg-white border-2 border-red-300  flex items-center justify-center shadow-lg">
+                                        <img
+                                            src="/src/images/logo.png" // replace with your actual file path
+                                            alt="KODI Logo"
+                                            className="h-12 w-12 object-contain"
+                                        />
+                                    </div>
                                 </div>
+
 
                                 <span className="text-2xl font-black tracking-tighter">
                                     {t('kodi')} <span className="bg-linear-to-r from-amber-500 to-yellow-600 bg-clip-text text-transparent">{t('language') === 'ta' ? 'KODI' : ''}</span>

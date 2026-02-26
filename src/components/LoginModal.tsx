@@ -9,9 +9,10 @@ interface LoginModalProps {
   onClose: () => void;
   onLogin: () => void;
   onNavigate: (page: string) => void;
+  onStepChange?: (step: 'phone' | 'otp') => void;
 }
 
-export default function LoginModal({ isOpen, onClose, onLogin, onNavigate }: LoginModalProps) {
+export default function LoginModal({ isOpen, onClose, onLogin, onNavigate, onStepChange }: LoginModalProps) {
   const { language, t } = useLanguage();
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -24,6 +25,7 @@ export default function LoginModal({ isOpen, onClose, onLogin, onNavigate }: Log
 
   const handleClose = () => {
     setStep('phone');
+    onStepChange?.('phone');
     setPhoneNumber('');
     setOtp('');
     setError('');
@@ -58,6 +60,7 @@ export default function LoginModal({ isOpen, onClose, onLogin, onNavigate }: Log
       if (response.status === 200) {
         setSuccess(t('otpSuccess'));
         setStep('otp');
+        onStepChange?.('otp');
       }
     } catch (err: unknown) {
       const apiError = err as ApiError;
@@ -357,6 +360,7 @@ export default function LoginModal({ isOpen, onClose, onLogin, onNavigate }: Log
                   type="button"
                   onClick={() => {
                     setStep('phone');
+                    onStepChange?.('phone');
                     setOtp('');
                     setError('');
                     setSuccess('');
