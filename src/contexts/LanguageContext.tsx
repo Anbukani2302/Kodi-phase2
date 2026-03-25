@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import React from 'react';
 
 type Language = 'ta' | 'en';
@@ -293,9 +293,16 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     return (saved as Language) || 'ta';
   });
 
+  // Log language changes
+  useEffect(() => {
+    console.log("LanguageContext: Current language changed to", language);
+  }, [language]);
+
   const handleSetLanguage = (lang: Language) => {
+    console.log("LanguageContext: Setting language to", lang);
     setLanguage(lang);
     localStorage.setItem('language', lang);
+    console.log("LanguageContext: Language saved to localStorage");
   };
 
   const t = (key: string): string => {

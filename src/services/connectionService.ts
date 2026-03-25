@@ -1,5 +1,7 @@
 // services/connectionService.ts
+import { ReactNode } from "react";
 import api from "./api";
+import { cacheService, createCacheKey, withCache } from "./cacheService";
 
 // ===== EXISTING CONNECTION TYPES (KEEP AS IS) =====
 export interface Connection {
@@ -33,6 +35,9 @@ export interface ConnectionRequest {
 
 // ===== NEW GENEALOGY INVITATION TYPES =====
 export interface GenealogyInvitation {
+  brick_person_id: any;
+  time_ago: ReactNode;
+  is_expired: boolean;
   id: number;
   token: string;
   status: "pending" | "accepted" | "rejected" | "expired" | "cancelled";
@@ -46,9 +51,9 @@ export interface GenealogyInvitation {
   person_gender: string;
   person_is_placeholder: boolean;
   original_relation_code: string;
-  placeholder_gender: string;
-  time_ago: string;
-  is_expired: boolean;
+  to_user_name?: string;
+  recipient_display?: string;
+  to_user_mobile?: string;
 }
 
 export interface ReceivedInvitationsResponse {
@@ -62,6 +67,7 @@ export interface SentInvitationsResponse {
   success: boolean;
   sent_invitations: GenealogyInvitation[];
   stats: {
+    cancelled: number;
     total: number;
     pending: number;
     accepted: number;
@@ -251,14 +257,20 @@ class ConnectionService {
 
   // GET /api/genealogy/invitations/pending/ - Get pending connection requests (received)
   async getReceivedRequests(): Promise<GenealogyInvitation[]> {
-    const response = await api.get("/api/genealogy/invitations/pending/");
-    return response.data.invitations || [];
+    const cacheKey = createCacheKey('invitations_received');
+    return withCache(cacheKey, async () => {
+      const response = await api.get("/api/genealogy/invitations/pending/");
+      return response.data.invitations || [];
+    }, 2 * 60 * 1000); // 2 minutes cache
   }
 
   // GET /api/genealogy/invitations/sent/ - Get sent invitations
-  async getSentRequests(): Promise<GenealogyInvitation[]> {
-    const response = await api.get("/api/genealogy/invitations/sent/");
-    return response.data.sent_invitations || [];
+  async getSentRequests(): Promise<SentInvitationsResponse> {
+    const cacheKey = createCacheKey('invitations_sent');
+    return withCache(cacheKey, async () => {
+      const response = await api.get("/api/genealogy/invitations/sent/");
+      return response.data;
+    }, 2 * 60 * 1000); // 2 minutes cache
   }
 
   // POST /api/genealogy/invitations/create/ - Send invitation
@@ -267,20 +279,42 @@ class ConnectionService {
       invited_user_id: userId,
       relation_code: relationCode,
     });
+    
+    // Clear caches since data changed
+    this.clearInvitationCaches();
+    
     return response.data;
   }
 
+  // Add this method to your connectionService
+  async getInvitationWithPath(invitationId: number): Promise<any> {
+    try {
+      // Use POST as the backend expects a POST request for this endpoint
+      const response = await api.get(`/api/genealogy/invitations/${invitationId}/view-with-path/`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching invitation with path:', error);
+      throw error;
+    }
+  }
   // POST /api/genealogy/invitations/:id/accept/ - Accept invitation
   async acceptRequest(invitationId: number): Promise<any> {
     const response = await api.post(
       `/api/genealogy/invitations/${invitationId}/accept/`
     );
+    
+    // Clear caches since data changed
+    this.clearInvitationCaches();
+    
     return response.data;
   }
 
   // POST /api/genealogy/invitations/:id/reject/ - Reject invitation
   async rejectRequest(invitationId: number): Promise<void> {
     await api.post(`/api/genealogy/invitations/${invitationId}/reject/`);
+    
+    // Clear caches since data changed
+    this.clearInvitationCaches();
   }
 
   // POST /api/genealogy/invitations/sent/:id/cancel/ - Cancel sent invitation
@@ -290,7 +324,17 @@ class ConnectionService {
     const response = await api.post(
       `/api/genealogy/invitations/sent/${invitationId}/cancel/`
     );
+    
+    // Clear caches since data changed
+    this.clearInvitationCaches();
+    
     return response.data;
+  }
+
+  // Helper method to clear invitation-related caches
+  private clearInvitationCaches(): void {
+    cacheService.clear('invitations_received');
+    cacheService.clear('invitations_sent');
   }
 
   // DELETE /api/connections/:id/ - Remove connection (unfriend)
@@ -325,7 +369,7 @@ class ConnectionService {
   // GET connected persons
   async getConnectedPersons(
     personId: number,
-    maxDepth: number = 3
+    maxDepth: number = 1
   ): Promise<ConnectedResponse> {
     const response = await api.get(
       `/api/genealogy/persons/${personId}/connected/`,

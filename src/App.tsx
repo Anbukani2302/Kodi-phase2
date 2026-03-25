@@ -13,6 +13,8 @@ import ChatPage from "./components/ChatPage";
 import ConnectionsPage from "./components/ConnectionsPage";
 import DashboardPage from "./components/DashboardPage";
 import OneToConnectPage from "./components/OneToConnectPage";
+import ConnectedPeople from "./components/ConnectedPeople";
+
 
 import { authService } from "./services/authService";
 
@@ -120,6 +122,15 @@ export default function App() {
               ) : <Navigate to="/" />
             }
           />
+
+<Route
+  path="/connected-people"
+  element={
+    isAuthenticated ? (
+      localStorage.getItem('userRole') === 'admin' ? <Navigate to="/dashboard" /> : <ConnectedPeople />
+    ) : <Navigate to="/" />
+  }
+/>
 
           <Route
             path="/dashboard"

@@ -108,6 +108,9 @@ export default function LoginModal({ isOpen, onClose, onLogin, onNavigate, onSte
           localStorage.setItem('currentUserName', response.data.user.full_name || 'YOU');
         }
 
+        // Store login mobile number to show in profile page
+        localStorage.setItem('loginMobileNumber', phoneNumber.replace(/\D/g, ''));
+
         // Explicitly set role for regular user to prevent dashboard redirect
         localStorage.setItem('userRole', 'user');
 
@@ -284,108 +287,117 @@ export default function LoginModal({ isOpen, onClose, onLogin, onNavigate, onSte
 
           {/* OTP Step */}
           {step === 'otp' && (
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {t('enterOtp')}
-                </label>
-                <p className="text-sm text-gray-600 mb-1">
-                  {t('otpSentTo')}: <span className="font-semibold text-amber-700">+91 {phoneNumber}</span>
-                </p>
-                <p className="text-xs text-gray-500 mb-3">
-                  {t('enterOtpHint')}
-                </p>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={otp}
-                    onChange={(e) => {
-                      const value = e.target.value.replace(/\D/g, '').slice(0, 6);
-                      setOtp(value);
-                    }}
-                    className="block w-full px-4 py-4 border-2 border-amber-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent text-center text-3xl tracking-widest font-mono bg-amber-50 placeholder:text-amber-700 placeholder:opacity-70 text-amber-900"
-                    placeholder="000000"
-                    maxLength={6}
-                    required
-                    pattern="\d{6}"
-                    inputMode="numeric"
-                  />
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    <div className="bg-amber-100 p-2 rounded-lg">
-                      <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                      </svg>
+            <div className="relative">
+              <button
+                onClick={handleClose}
+                className="absolute top-0 right-0 p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-all"
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {t('enterOtp')}
+                  </label>
+                  <p className="text-sm text-gray-600 mb-1">
+                    {t('otpSentTo')}: <span className="font-semibold text-amber-700">+91 {phoneNumber}</span>
+                  </p>
+                  <p className="text-xs text-gray-500 mb-3">
+                    {t('enterOtpHint')}
+                  </p>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={otp}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+                        setOtp(value);
+                      }}
+                      className="block w-full px-4 py-4 border-2 border-amber-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent text-center text-3xl tracking-widest font-mono bg-amber-50 placeholder:text-amber-700 placeholder:opacity-70 text-amber-900"
+                      placeholder="000000"
+                      maxLength={6}
+                      required
+                      pattern="\d{6}"
+                      inputMode="numeric"
+                    />
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <div className="bg-amber-100 p-2 rounded-lg">
+                        <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                        </svg>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-linear-to-r from-amber-600 via-amber-500 to-amber-600 text-white py-4 rounded-xl font-bold hover:from-amber-700 hover:via-amber-600 hover:to-amber-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                    {t('loading')}
-                  </>
-                ) : (
-                  <>
-                    <span className="text-lg " >{t('verifyOtp')}</span>
-                    <span className="ml-3 bg-white/20 text-white p-1 rounded-full">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
-                      </svg>
-                    </span>
-                  </>
-                )}
-              </button>
-
-              {/* Resend OTP and Back buttons */}
-              <div className="flex justify-between items-center pt-2">
                 <button
-                  type="button"
-                  onClick={handleResendOtp}
+                  type="submit"
                   disabled={isLoading}
-                  className="text-amber-700 hover:text-amber-800 text-sm font-semibold disabled:opacity-50 flex items-center bg-amber-50 px-4 py-2 rounded-lg border border-amber-200 hover:bg-amber-100 transition-colors"
+                  className="w-full bg-linear-to-r from-amber-600 via-amber-500 to-amber-600 text-white py-4 rounded-xl font-bold hover:from-amber-700 hover:via-amber-600 hover:to-amber-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                 >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                  </svg>
-                  {t('resendOtp')}
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                      {t('loading')}
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-lg " >{t('verifyOtp')}</span>
+                      <span className="ml-3 bg-white/20 text-white p-1 rounded-full">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                      </span>
+                    </>
+                  )}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep('phone');
-                    onStepChange?.('phone');
-                    setOtp('');
-                    setError('');
-                    setSuccess('');
-                  }}
-                  className="text-gray-700 hover:text-gray-800 text-sm flex items-center bg-gray-100 px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-200 transition-colors"
-                >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
-                  </svg>
-                  {t('changePhone')}
-                </button>
-              </div>
+                {/* Resend OTP and Back buttons */}
+                <div className="flex justify-between items-center pt-2">
+                  <button
+                    type="button"
+                    onClick={handleResendOtp}
+                    disabled={isLoading}
+                    className="text-amber-700 hover:text-amber-800 text-sm font-semibold disabled:opacity-50 flex items-center bg-amber-50 px-4 py-2 rounded-lg border border-amber-200 hover:bg-amber-100 transition-colors"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    {t('resendOtp')}
+                  </button>
 
-              {/* Security note */}
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg mt-4">
-                <div className="flex items-center justify-center">
-                  <svg className="w-4 h-4 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                  </svg>
-                  <p className="text-xs text-blue-700 text-center">
-                    {t('securityNote')}
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep('phone');
+                      onStepChange?.('phone');
+                      setOtp('');
+                      setError('');
+                      setSuccess('');
+                    }}
+                    className="text-gray-700 hover:text-gray-800 text-sm flex items-center bg-gray-100 px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-200 transition-colors"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                    </svg>
+                    {t('changePhone')}
+                  </button>
                 </div>
-              </div>
-            </form>
+
+                {/* Security note */}
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg mt-4">
+                  <div className="flex items-center justify-center">
+                    <svg className="w-4 h-4 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                    </svg>
+                    <p className="text-xs text-blue-700 text-center">
+                      {t('securityNote')}
+                    </p>
+                  </div>
+                </div>
+              </form>
+            </div>
           )}
         </div>
 

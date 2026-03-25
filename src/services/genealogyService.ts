@@ -4,6 +4,7 @@ import api from "./api";
 export interface Person {
   id: number;
   full_name: string;
+  name?: string;
   gender: string;
   is_placeholder: boolean;
   family_id: number;
@@ -35,6 +36,7 @@ export interface AddRelativeResponse {
   success: boolean;
   message: string;
   person: Person;
+  new_person?: Person;
   target_person: TargetPerson;
   relation: Relation;
   next_actions: NextAction[];
@@ -89,7 +91,6 @@ export interface PersonDetailResponse {
   image?: string;
 }
 
-// UPDATED: SendInvitationResponse interface
 export interface SendInvitationResponse {
   code: string;
   status: string;
@@ -101,7 +102,6 @@ export interface SendInvitationResponse {
   otp_sent?: boolean;
 }
 
-// UPDATED: SendInvitationPayload interface - includes relation_to_me
 export interface SendInvitationPayload {
   mobile_number: string;
   father_name?: string;
@@ -275,7 +275,6 @@ export interface GenerationInfo {
   };
 }
 
-// NEW: Interface for relation types dropdown
 export interface RelationTypeOption {
   value: string;
   label: string;
@@ -289,20 +288,190 @@ export interface RelationTypesResponse {
 class GenealogyService {
   async addRelative(data: AddRelativePayload): Promise<AddRelativeResponse> {
     console.log("API Call - addRelative:");
-    console.log("Endpoint:", "/api/genealogy/persons/add_relative/");
+    console.log("Endpoint:", "/api/genealogy/persons/{id}/add_relative_action/");
     console.log("Data:", data);
 
     try {
-      const response = await api.post(
-        "/api/genealogy/persons/add_relative/",
-        data
-      );
+      // First get current user ID from /me endpoint
+      let personId: number;
+
+      if (data.base_person === "self") {
+        // For self, fetch current user ID
+        try {
+          const meResponse = await this.getPersonMe();
+          personId = meResponse.id;
+          console.log("Current user ID from /me:", personId);
+        } catch (error) {
+          console.error("Error fetching current user ID:", error);
+          personId = 1; // Fallback
+        }
+      } else if (data.person_id) {
+        // For other person, use provided person_id
+        personId = data.person_id;
+      } else {
+        // Default fallback
+        personId = 1;
+      }
+
+      const endpoint = `/api/genealogy/persons/${personId}/add_relative_action/`;
+
+      // Comprehensive mapping of UI relation values to backend actions
+      const relationMap: Record<string, string> = {
+        // Basic relations
+        father: "add_father",
+        mother: "add_mother",
+        son: "add_son",
+        magan: "add_magan",
+        daughter: "add_daughter",
+        magal: "add_maghazh",
+        maghazl: "add_maghazh",
+
+        // Siblings with age
+        elder_brother: "add_elder_brother",
+        anna: "add_anna",
+        younger_brother: "add_younger_brother",
+        thambi: "add_thambi",
+        elder_sister: "add_elder_sister",
+        akka: "add_akka",
+        younger_sister: "add_younger_sister",
+        thangai: "add_thangai",
+        brother: "add_elder_brother",
+        sister: "add_elder_sister",
+
+        // Spouse/Partner
+        husband: "add_husband",
+        wife: "add_wife",
+        spouse: "add_spouse",
+        partner: "add_partner",
+
+        // Grandparents
+        thatha: "add_thatha",
+        grandfather: "add_thatha",
+        paati: "add_paati",
+        grandmother: "add_paati",
+
+        // Uncles
+        periyappa: "add_periyappa",
+        chithappa: "add_chithappa",
+
+        // Aunts
+        periyamma: "add_periyamma",
+        chithi: "add_chithi",
+
+        // Maternal/Paternal
+        mama: "add_mama",
+        athai: "add_athai",
+
+        // In-laws
+        athan: "add_athan",
+        anni: "add_anni",
+        kolunthanar: "add_kolunthanar",
+        kolunthiyazh: "add_kolunthiyazh",
+
+        // Children-in-law
+        marumagan: "add_marumagan",
+        son_in_law: "add_marumagan",
+        marumagal: "add_marumagal",
+        daughter_in_law: "add_marumagal",
+
+        // Grandchildren
+        peran: "add_peran",
+        grandson: "add_peran",
+        petthi: "add_petthi",
+        granddaughter: "add_petthi",
+
+        // Tamil terms
+        'அப்பா': 'add_father',
+        'அம்மா': 'add_mother',
+        'அண்ணன்': 'add_anna',
+        'தம்பி': 'add_thambi',
+        'அக்கா': 'add_akka',
+        'தங்கை': 'add_thangai',
+        'மகன்': 'add_magan',
+        'மகள்': 'add_maghazh',
+        'தாத்தா': 'add_thatha',
+        'பாட்டி': 'add_paati',
+        'பெரியப்பா': 'add_periyappa',
+        'சித்தப்பா': 'add_chithappa',
+        'பெரியம்மா': 'add_periyamma',
+        'சித்தி': 'add_chithi',
+        'மாமா': 'add_mama',
+        'அத்தை': 'add_athai',
+        'அத்தான்': 'add_athan',
+        'அண்ணி': 'add_anni',
+        'மருமகன்': 'add_marumagan',
+        'மருமகள்': 'add_marumagal',
+        'பேரன்': 'add_peran',
+        'பேத்தி': 'add_petthi'
+      };
+
+      if (!data.relation_to_me) {
+        throw new Error("relation_to_me is required");
+      }
+
+      // Normalize relation key (remove extra spaces, convert to lowercase)
+      let relationKey = data.relation_to_me.trim().toLowerCase();
+
+      // Try direct lookup first
+      let action = relationMap[relationKey];
+
+      // If not found, try without spaces
+      if (!action) {
+        const noSpaceKey = relationKey.replace(/\s+/g, '');
+        action = relationMap[noSpaceKey];
+      }
+
+      // If still not found, check if it's already in add_ format
+      if (!action && relationKey.startsWith('add_')) {
+        action = relationKey; // Use as-is
+      }
+
+      // If still not found, throw error
+      if (!action) {
+        console.error(`No mapping found for relation: "${data.relation_to_me}" (normalized: "${relationKey}")`);
+        console.log("Available relations:", Object.keys(relationMap));
+        throw new Error(`Invalid relation type: ${data.relation_to_me}`);
+      }
+
+      const transformedPayload = {
+        action: action,
+        full_name: data.full_name
+      };
+
+      console.log("Final personId:", personId);
+      console.log("Transformed endpoint:", endpoint);
+      console.log("Transformed payload:", transformedPayload);
+
+      const response = await api.post(endpoint, transformedPayload);
 
       console.log("API Response:", response.data);
       return response.data;
     } catch (error: any) {
       console.error("API Error:", error);
       console.error("Error Response:", error.response);
+
+      // Handle specific error codes
+      if (error.response?.status === 403) {
+        const errorMessage = error.response.data?.error || error.response.data?.message || "You don't have permission to add relatives to this person";
+        console.error("403 Forbidden:", errorMessage);
+
+        if (errorMessage.includes("permission_denied") || errorMessage.includes("cannot add relatives")) {
+          throw new Error("This person has restricted family access. Only family members with proper permissions can add relatives.");
+        } else if (errorMessage.includes("not found")) {
+          throw new Error("Person not found or does not exist.");
+        } else {
+          throw new Error(errorMessage);
+        }
+      } else if (error.response?.status === 404) {
+        const errorMessage = error.response.data?.message || "Person not found";
+        console.error("404 Not Found:", errorMessage);
+        throw new Error(errorMessage);
+      } else if (error.response?.status === 401) {
+        const errorMessage = error.response.data?.message || "You are not authenticated";
+        console.error("401 Unauthorized:", errorMessage);
+        throw new Error(errorMessage);
+      }
+
       throw error;
     }
   }
@@ -340,7 +509,6 @@ class GenealogyService {
     }
   }
 
-  // UPDATED: sendInvitation method with correct parameters
   async sendInvitation(
     personId: number,
     payloadOrMobileNumber: string | SendInvitationPayload,
@@ -354,7 +522,6 @@ class GenealogyService {
 
     if (typeof payloadOrMobileNumber === 'object') {
       finalPayload = { ...payloadOrMobileNumber };
-      // Ensure relation_type is set if only relation_to_me is provided (backward compatibility)
       if (!finalPayload.relation_type && finalPayload.relation_to_me) {
         finalPayload.relation_type = finalPayload.relation_to_me;
       }
@@ -385,7 +552,6 @@ class GenealogyService {
     }
   }
 
-  // NEW: Get relation types for dropdown
   async getRelationTypes(lang: string = 'en'): Promise<RelationTypesResponse> {
     console.log(`API Call - getRelationTypes for language: ${lang}`);
 
@@ -399,7 +565,6 @@ class GenealogyService {
     }
   }
 
-  // NEW: Get all relations in a specific language
   async getRelationsByLanguage(lang: string = 'en'): Promise<any> {
     console.log(`API Call - getRelationsByLanguage: ${lang}`);
 
@@ -473,16 +638,65 @@ class GenealogyService {
   }
 
   async addRelativeAction(personId: number, data: AddRelativeActionPayload): Promise<AddRelativeResponse> {
-    console.log(`API Call - addRelativeAction for person ${personId}:`, data);
+    console.log(`🔵🔵🔵 addRelativeAction CALLED for person ${personId}:`, data);
+    console.trace("🔍 Stack trace:");
+
     try {
+      let mappedAction = data.action?.toLowerCase() || '';
+
+      const actionMap: Record<string, string> = {
+        'add_brother': 'add_elder_brother',
+        'add_sister': 'add_elder_sister',
+        'add_grandson': 'add_peran',
+        'add_grand_son': 'add_peran',
+        'add_granddaughter': 'add_petthi',
+        'add_grand_daughter': 'add_petthi',
+        'add_grandfather': 'add_thatha',
+        'add_grand_father': 'add_thatha',
+        'add_grandmother': 'add_paati',
+        'add_grand_mother': 'add_paati',
+        'add_brother-in-law': 'add_maithunar',
+        'add_brother_in_law': 'add_maithunar',
+        'add_sister-in-law': 'add_anni',
+        'add_sister_in_law': 'add_anni',
+        'add_son-in-law': 'add_marumagan',
+        'add_son_in_law': 'add_marumagan',
+        'add_daughter-in-law': 'add_marumagal',
+        'add_daughter_in_law': 'add_marumagal',
+        'add_uncle': 'add_mama',
+        'add_aunt': 'add_athai',
+        'add_mythun': 'add_mythuni',
+        'add_மைத்துனி': 'add_mythuni',
+        'add_கொழுந்தியாழ்': 'add_kolunthiyazh'
+      };
+
+      if (actionMap[mappedAction]) {
+        mappedAction = actionMap[mappedAction];
+      }
+
+      const transformedPayload = { ...data, action: mappedAction };
+
+      console.log("📤 Making API POST request to:", `/api/genealogy/persons/${personId}/add_relative_action/`);
+      console.log("📤 Request payload:", transformedPayload);
+
       const response = await api.post(
         `/api/genealogy/persons/${personId}/add_relative_action/`,
-        data
+        transformedPayload
       );
-      console.log("addRelativeAction API Response:", response.data);
+
+      console.log("📥 API Response received:", response.data);
       return response.data;
+
     } catch (error: any) {
-      console.error("API Error in addRelativeAction:", error);
+      console.error("🔴 API Error in addRelativeAction:", error);
+      console.error("🔴 Error response:", error.response?.data);
+      console.error("🔴 Error status:", error.response?.status);
+
+      // Check for specific error about invalid action
+      if (error.response?.data?.code === 'invalid_action') {
+        console.log("❌ Invalid action. Valid actions:", error.response?.data?.valid_actions);
+      }
+
       throw error;
     }
   }
@@ -496,6 +710,37 @@ class GenealogyService {
       return response.data;
     } catch (error: any) {
       console.error("Error fetching generation info:", error);
+      throw error;
+    }
+  }
+
+  async getAshramamRelations(personId: number): Promise<any> {
+    console.log(`API Call - getAshramamRelations for person ${personId}`);
+    try {
+      const response = await api.get(`/api/genealogy/persons/${personId}/ashramam-relations/`);
+      console.log("Ashramam relations response:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("Error fetching ashramam relations:", error);
+      throw error;
+    }
+  }
+
+  async addCustomRelative(personId: number, payload: {
+    from_relationship_name: string;
+    to_relationship_name: string;
+    name: string;
+    gender: string;
+  }): Promise<any> {
+    console.log(` API Call - addCustomRelative for person ${personId}:`, payload);
+    try {
+      const response = await api.post(`/api/genealogy/persons/${personId}/add-custom-relative/`, payload);
+      console.log(" Add custom relative response:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error(" Error adding custom relative:", error);
+      console.error(" Error response data:", error.response?.data);
+      console.error(" Error status:", error.response?.status);
       throw error;
     }
   }

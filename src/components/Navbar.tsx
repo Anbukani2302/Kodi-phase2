@@ -1,5 +1,7 @@
+// Updated Navbar.tsx - Add Connected People option
+
 import React, { useState, useEffect } from "react";
-import { Home, Users, MessageCircle, User, LogOut, Globe, TreeDeciduous, Download, Users2, Settings, X, Menu, ChevronDown, LayoutGrid } from "lucide-react";
+import { Home, Users, MessageCircle, User, LogOut, Globe, TreeDeciduous, Download, Users2, Settings, X, Menu, ChevronDown, LayoutGrid, UserPlus } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useLanguage } from "../contexts/LanguageContext";
 
@@ -22,11 +24,12 @@ export default function Navbar({
   const [modalImage, setModalImage] = useState<{ src: string; title: string } | null>(null);
   const [isServicesOpen, setIsServicesOpen] = useState(false);
   const isLandingPage = location.pathname === '/';
+  const isFeedPage = location.pathname === '/home';
   const isGenealogyPage = location.pathname === '/genealogy';
-  const isAutoHidingNavbar = !isLandingPage;
-  const [navVisible, setNavVisible] = useState(isLandingPage);
+  const isAutoHidingNavbar = isGenealogyPage;
+  const [navVisible, setNavVisible] = useState(!isAutoHidingNavbar);
 
-  // Hide navbar when entering any page except landing, show on hover
+  // Hide navbar only on genealogy page, show on hover. Always visible on others.
   useEffect(() => {
     if (isAutoHidingNavbar) {
       setNavVisible(false);
@@ -53,7 +56,9 @@ export default function Navbar({
   }, []);
 
   const toggleLanguage = () => {
-    setLanguage(language === "ta" ? "en" : "ta");
+    const newLanguage = language === "ta" ? "en" : "ta";
+    console.log("Switching language from", language, "to", newLanguage);
+    setLanguage(newLanguage);
   };
 
   const isActive = (path: string) => location.pathname === path;
@@ -130,6 +135,10 @@ export default function Navbar({
     });
   };
 
+  const handleConnectedPeopleClick = () => {
+    navigate("/connected-people");
+  };
+
   return (
     <>
       {/* Invisible hover trigger zone at top - only on auto-hiding pages */}
@@ -156,7 +165,7 @@ export default function Navbar({
         {/* First Row - Logo and Right Actions with gradient */}
         <div className="border-b border-amber-100 bg-linear-to-r from-amber-50 via-orange-50 to-amber-50">
           <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16 sm:h-20">
+            <div className="flex items-center justify-between h-14 sm:h-16">
               {/* Logo Section - Responsive with pointer */}
               <div
                 onClick={() => navigate("/")}
@@ -165,7 +174,7 @@ export default function Navbar({
                 tabIndex={0}
                 onKeyDown={(e) => e.key === 'Enter' && navigate("/")}
               >
-                <div className="relative w-10 h-10 sm:w-14 sm:h-14 rounded-lg sm:rounded-xl overflow-hidden bg-linear-to-br from-amber-800 to-amber-700 p-0.5 shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
+                <div className="relative w-8 h-8 sm:w-11 sm:h-11 rounded-lg sm:rounded-xl overflow-hidden bg-linear-to-br from-amber-800 to-amber-700 p-0.5 shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
                   <div className="w-full h-full bg-linear-to-br from-amber-50 to-orange-50 rounded-md sm:rounded-lg flex items-center justify-center overflow-hidden">
                     <img
                       src="/src/images/logo.png"
@@ -175,7 +184,7 @@ export default function Navbar({
                   </div>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xl sm:text-2xl font-black tracking-tight bg-linear-to-r from-amber-800 to-amber-700 bg-clip-text text-transparent">
+                  <span className="text-lg sm:text-xl font-black tracking-tight bg-linear-to-r from-amber-800 to-amber-700 bg-clip-text text-transparent">
                     {t('kodi')}
                   </span>
                   <span className="hidden xs:flex text-[10px] sm:text-xs text-amber-700 font-medium tracking-wide items-center gap-1">
@@ -192,7 +201,7 @@ export default function Navbar({
                   <div className="relative">
                     <button
                       onClick={() => setIsServicesOpen(!isServicesOpen)}
-                      className={`flex items-center space-x-1 px-3 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl transition-all border font-medium shadow-sm hover:shadow-md group cursor-pointer ${isServicesOpen
+                      className={`flex items-center space-x-1 px-3 py-1 sm:py-2 rounded-lg sm:rounded-xl transition-all border font-medium shadow-sm hover:shadow-md group cursor-pointer ${isServicesOpen
                         ? 'bg-amber-100 text-amber-900 border-amber-300'
                         : 'bg-white text-amber-700 border-amber-200 hover:border-amber-300'
                         }`}
@@ -204,7 +213,7 @@ export default function Navbar({
 
                     {/* Services Dropdown */}
                     {isServicesOpen && (
-                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-2xl border border-amber-100 py-2 z-102 animate-fadeIn">
+                      <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-amber-100 py-2 z-102 animate-fadeIn">
                         <button
                           onClick={() => {
                             navigate("/one-to-connect");
@@ -213,7 +222,22 @@ export default function Navbar({
                           className="w-full flex items-center space-x-3 px-4 py-2.5 text-left text-gray-700 hover:bg-linear-to-r hover:from-amber-50 hover:to-orange-50 hover:text-amber-800 transition-colors"
                         >
                           <Users2 className="h-4 w-4 text-amber-600" />
-                          <span className="text-sm font-medium">One to Connect</span>
+                          <span className="text-sm font-medium">
+  {language === 'en' ? 'Create Two-Way Relation' : 'உறவு இணை'}
+</span>                        </button>
+                        
+                        {/* New Connected People Option */}
+                        <button
+                          onClick={() => {
+                            handleConnectedPeopleClick();
+                            setIsServicesOpen(false);
+                          }}
+                          className="w-full flex items-center space-x-3 px-4 py-2.5 text-left text-gray-700 hover:bg-linear-to-r hover:from-amber-50 hover:to-orange-50 hover:text-amber-800 transition-colors border-t border-amber-100 mt-1 pt-2"
+                        >
+                          <UserPlus className="h-4 w-4 text-amber-600" />
+                          <span className="text-sm font-medium">
+                            {language === 'ta' ? 'உறவு முறை பட்டியல்' : 'Relationship List'}
+                          </span>
                         </button>
                       </div>
                     )}
@@ -223,20 +247,20 @@ export default function Navbar({
                 {/* Settings Icon */}
                 <button
                   onClick={handleSettingsClick}
-                  className="flex items-center justify-center w-9 h-9 sm:w-11 sm:h-11 rounded-lg sm:rounded-xl bg-white text-amber-700 hover:bg-linear-to-br hover:from-amber-50 hover:to-orange-50 transition-all border border-amber-200 hover:border-amber-300 shadow-sm hover:shadow-md group cursor-pointer"
+                  className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white text-amber-700 hover:bg-linear-to-br hover:from-amber-50 hover:to-orange-50 transition-all border border-amber-200 hover:border-amber-300 shadow-sm hover:shadow-md group cursor-pointer"
                   title="Settings"
                 >
-                  <Settings className="h-4 w-4 sm:h-5 sm:w-5 group-hover:rotate-90 transition-transform duration-300" />
+                  <Settings className="h-4 w-4 sm:h-4.5 sm:w-4.5 group-hover:rotate-90 transition-transform duration-300" />
                 </button>
 
                 {/* Language Button */}
                 <button
                   onClick={toggleLanguage}
-                  className="flex items-center space-x-1 sm:space-x-2 px-2 sm:px-5 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl bg-white text-amber-700 hover:bg-linear-to-br hover:from-amber-50 hover:to-orange-50 transition-all border border-amber-200 hover:border-amber-300 font-medium shadow-sm hover:shadow-md group cursor-pointer"
+                  className="flex items-center space-x-1 sm:space-x-2 px-2 sm:px-4 py-1 sm:py-2 rounded-lg sm:rounded-xl bg-white text-amber-700 hover:bg-linear-to-br hover:from-amber-50 hover:to-orange-50 transition-all border border-amber-200 hover:border-amber-300 font-medium shadow-sm hover:shadow-md group cursor-pointer"
                 >
                   <Globe className="h-3 w-3 sm:h-4 sm:w-4 group-hover:scale-110 transition-transform" />
                   <span className="text-xs sm:text-sm font-semibold">
-                    {language === "ta" ? "தமிழ்" : "EN"}
+                    {language === "ta" ? "தமிழ்" : "Eng"}
                   </span>
                 </button>
 
@@ -244,7 +268,7 @@ export default function Navbar({
                 {isAuthenticated ? (
                   <button
                     onClick={onLogout}
-                    className="flex items-center space-x-1 sm:space-x-2 px-2 sm:px-5 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl bg-linear-to-r from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 transition-all border border-red-400 shadow-sm hover:shadow-md font-medium group cursor-pointer"
+                    className="flex items-center space-x-1 sm:space-x-2 px-2 sm:px-4 py-1 sm:py-2 rounded-lg sm:rounded-xl bg-linear-to-r from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 transition-all border border-red-400 shadow-sm hover:shadow-md font-medium group cursor-pointer"
                   >
                     <LogOut className="h-3 w-3 sm:h-4 sm:w-4 group-hover:translate-x-0.5 transition-transform" />
                     <span className="hidden xs:inline text-xs sm:text-sm font-semibold">{t("logout")}</span>
@@ -252,7 +276,7 @@ export default function Navbar({
                 ) : (
                   <button
                     onClick={onLoginClick}
-                    className="flex items-center space-x-1 sm:space-x-2 px-3 sm:px-6 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl bg-linear-to-r from-amber-800 to-amber-700 text-white hover:from-amber-900 hover:to-amber-800 transition-all font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 cursor-pointer"
+                    className="flex items-center space-x-1 sm:space-x-2 px-3 sm:px-5 py-1 sm:py-2 rounded-lg sm:rounded-xl bg-linear-to-r from-amber-800 to-amber-700 text-white hover:from-amber-900 hover:to-amber-800 transition-all font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 cursor-pointer"
                   >
                     <User className="h-3 w-3 sm:h-4 sm:w-4" />
                     <span className="text-xs sm:text-sm font-semibold">{t("login")}</span>
@@ -261,7 +285,7 @@ export default function Navbar({
 
                 {/* Mobile Menu Toggle Button */}
                 <button
-                  className="md:hidden flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-white text-amber-700 hover:bg-linear-to-br hover:from-amber-50 hover:to-orange-50 border border-amber-200 shadow-sm transition-all hover:shadow-md cursor-pointer"
+                  className="md:hidden flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white text-amber-700 hover:bg-linear-to-br hover:from-amber-50 hover:to-orange-50 border border-amber-200 shadow-sm transition-all hover:shadow-md cursor-pointer"
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                   aria-label="Toggle menu"
                 >
@@ -280,7 +304,7 @@ export default function Navbar({
         {isAuthenticated && (
           <div className="hidden md:block bg-linear-to-r from-amber-50 via-orange-50 to-amber-50 border-b border-amber-200">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center justify-center space-x-1 py-2 sm:py-3 overflow-x-auto scrollbar-hide">
+              <div className="flex items-center justify-center space-x-1 py-1 sm:py-2 overflow-x-auto scrollbar-hide">
                 {!isAdmin ? (
                   <>
                     <NavBtn
@@ -333,6 +357,8 @@ export default function Navbar({
                       active={isActive("/profile")}
                       onClick={() => navigate("/profile")}
                     />
+
+                   
                   </>
                 ) : (
                   <>
@@ -363,6 +389,12 @@ export default function Navbar({
                         icon={<Users2 size={18} />}
                         onClick={() => { navigate("/one-to-connect"); }}
                         active={isActive("/one-to-connect")}
+                      />
+                      <MobileNavBtn
+                        label={language === 'ta' ? 'இணைக்கப்பட்ட மக்கள்' : 'Connected People'}
+                        icon={<UserPlus size={18} />}
+                        onClick={() => { handleConnectedPeopleClick(); }}
+                        active={isActive("/connected-people")}
                       />
                       <MobileNavBtn
                         label={t("home")}
