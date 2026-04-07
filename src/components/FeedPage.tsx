@@ -1,48 +1,75 @@
-import React from "react";
-import { useState, useEffect } from 'react';
+// FeedPage.tsx (updated)
+import React, { useState, useEffect, useCallback, ReactNode } from 'react';
 import {
-  Heart, MessageCircle, Share2, Send, Image as ImageIcon,
-  Loader2, Trash2, Camera, Video, Calendar,
-  MapPin, Clock, CheckCircle, XCircle, AlertCircle,
-  Globe, Lock, Eye, ChevronDown, ChevronUp, Plus,
-  Tag, Sparkles, Check, X, Users, Filter, User,
-  Phone, Mail, Calendar as CalendarIcon, List,
-  ChevronLeft, ChevronRight, Download, Printer,
-  Coffee, Gift, Music, Home, Briefcase, Heart as HeartIcon,
-  Edit2, Trash2 as TrashIcon, MoreVertical, Flag
+  Calendar,
+  Loader2,
+  Send,
+  Image as ImageIcon,
+  Camera,
+  Video,
+  MapPin,
+  Clock,
+  Tag,
+  Sparkles,
+  Check,
+  X,
+  Users,
+  List,
+  Eye,
+  User,
+  Home,
+  MessageCircle,
+  Heart,
+  Globe,
+  Lock,
+  MoreVertical,
+  Plus,
+  ChevronRight,
+  Flag,
+  Trash2,
+  Edit2,
+  CheckCircle,
+  AlertCircle,
+  XCircle,
+  Coffee,
+  FileText,
+  ChevronDown
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
-import { postService, Post } from '../services/postService';
+import { postService, Post as PostType } from '../services/postService';
 import { eventService, Event, EventType, RSVPData, eventHelpers } from '../services/eventService';
 import { authService, UserProfile } from '../services/authService';
 import { BASE_URL } from '../services/api';
+import Post from '../components/Post';
 
-// RSVP Guest interface
+// Interfaces
 interface RSVPGuest {
+  notes: ReactNode;
   id: number;
-  response: 'GOING' | 'MAYBE' | 'NOT_GOING';
-  guests_count: number;
-  guest_names: string;
-  dietary_restrictions: string;
-  notes: string;
-  user: number;
-  user_name: string;
-  full_name: string;
-  user_full_name: string;
+  user: {
+    id: number;
+    full_name: string;
+    profile_image?: string;
+  };
+  status: 'GOING' | 'MAYBE' | 'NOT_GOING';
+  guests_count?: number;
+  created_at: string;
 }
 
-// Event Comment interface
 interface EventComment {
+  user_name: any;
   id: number;
+  event: number;
+  user: {
+    id: number;
+    full_name: string;
+    profile_image?: string;
+  };
   content: string;
-  user: number;
-  user_name: string;
-  parent: number | null;
-  replies: EventComment[];
   created_at: string;
-  updated_at?: string;
-  is_flagged?: boolean;
+  parent?: number;
+  replies?: EventComment[];
 }
 
 export default function FeedPage() {
@@ -53,7 +80,7 @@ export default function FeedPage() {
   const [profile, setProfile] = useState<Partial<UserProfile> | null>(null);
 
   // Posts state
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [posts, setPosts] = useState<PostType[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Events state
@@ -62,8 +89,10 @@ export default function FeedPage() {
 
   // Post creation states
   const [postContent, setPostContent] = useState('');
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState('');
+  const [selectedMedia, setSelectedMedia] = useState<File[]>([]);
+  const [mediaPreviews, setMediaPreviews] = useState<string[]>([]);
+  const [mediaCaptions, setMediaCaptions] = useState<string[]>([]);
+  const [postVisibility, setPostVisibility] = useState('public');
 
   // Event creation states
   const [eventTitle, setEventTitle] = useState('');
@@ -138,8 +167,11 @@ export default function FeedPage() {
   // Media tab for posts: 'photos' or 'videos'
   const [activeMediaTab, setActiveMediaTab] = useState<'photos' | 'videos'>('photos');
 
-  // Event filters - Added 'all' option
+  // Event filters
   const [eventFilter, setEventFilter] = useState<'all' | 'upcoming' | 'past' | 'myevents' | 'myrsvps' | 'myreplies'>('all');
+
+  // Post filters
+  const [postFilter, setPostFilter] = useState<'all' | 'myposts'>('all');
 
   // Get current user ID from auth service or profile
   const currentUser = authService.getCurrentUser();
@@ -153,7 +185,7 @@ export default function FeedPage() {
       loadEvents();
       loadEventTypes();
     }
-  }, [activeTab, eventFilter]);
+  }, [activeTab, eventFilter, postFilter]);
 
   const loadProfile = async () => {
     try {
@@ -167,12 +199,40 @@ export default function FeedPage() {
   const loadPosts = async () => {
     try {
       setLoading(true);
-      const response = await postService.getPosts();
-      setPosts(response.results || []);
+      let response;
+
+      if (postFilter === 'myposts' && currentUserIdNum) {
+        // Get current user's posts - hits /api/posts/user/YOUR_USER_ID/?page=1&page_size=20
+        response = await postService.getUserPosts(currentUserIdNum);
+      } else {
+        // Get all posts feed
+        response = await postService.getPosts();
+      }
+
+      if (response && response.posts) {
+        setPosts(response.posts);
+      } else if (response && response.results) {
+        setPosts(response.results);
+      } else {
+        setPosts([]);
+      }
     } catch (error) {
       console.error('Failed to load posts:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAndUpdatePost = async (postId: number) => {
+    try {
+      const updatedPost = await postService.getPost(postId);
+      if (updatedPost) {
+        setPosts(currentPosts => currentPosts.map(post =>
+          post.id === postId ? updatedPost : post
+        ));
+      }
+    } catch (error) {
+      console.error('Failed to refresh updated post:', error);
     }
   };
 
@@ -217,7 +277,6 @@ export default function FeedPage() {
     try {
       setLoadingEventTypes(true);
       const types = await eventService.getEventTypes();
-      console.log('Loaded event types:', types);
       setEventTypes(Array.isArray(types) ? types : []);
     } catch (error) {
       console.error('Failed to load event types:', error);
@@ -232,14 +291,12 @@ export default function FeedPage() {
       const response = await eventService.getRSVPList(eventId, filter);
       setGuests(Array.isArray(response) ? response : []);
 
-      // Calculate stats
       if (selectedEventForGuests) {
         const going = selectedEventForGuests.rsvp_going;
         const maybe = selectedEventForGuests.rsvp_maybe;
         const notGoing = selectedEventForGuests.rsvp_not_going;
         const total = going + maybe + notGoing;
 
-        // Calculate total guests (including plus ones)
         const totalGuests = Array.isArray(response) ? response.reduce((sum, guest) =>
           sum + (guest.guests_count || 0) + 1, 0) : 0;
 
@@ -277,19 +334,44 @@ export default function FeedPage() {
     }
   };
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setSelectedImage(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
+  const handleMediaSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const newPreviews: string[] = [];
+    const newFiles: File[] = [...selectedMedia];
+
+    files.forEach((file) => {
+      if (file.type.startsWith('image/')) {
+        newFiles.push(file);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          newPreviews.push(reader.result as string);
+          if (newPreviews.length === files.length) {
+            setMediaPreviews([...mediaPreviews, ...newPreviews]);
+          }
+        };
+        reader.readAsDataURL(file);
+      } else {
+        newFiles.push(file);
+        newPreviews.push('');
+      }
+    });
+
+    setSelectedMedia(newFiles);
+    setMediaCaptions([...mediaCaptions, ...files.map(() => '')]);
   };
 
-  // Handle edit image selection
+  const removeMedia = (index: number) => {
+    setSelectedMedia(selectedMedia.filter((_, i) => i !== index));
+    setMediaPreviews(mediaPreviews.filter((_, i) => i !== index));
+    setMediaCaptions(mediaCaptions.filter((_, i) => i !== index));
+  };
+
+  const updateMediaCaption = (index: number, caption: string) => {
+    const newCaptions = [...mediaCaptions];
+    newCaptions[index] = caption;
+    setMediaCaptions(newCaptions);
+  };
+
   const handleEditImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -302,18 +384,13 @@ export default function FeedPage() {
     }
   };
 
-  // Check if current user is the event creator
   const isEventCreator = (event: Event) => {
-    // If we're in "My Events", we can trust the backend filtered these correctly
     if (eventFilter === 'myevents') return true;
-
     if (!currentUserIdNum) return false;
 
-    // Handle different formats: object {id: 123}, number, or string
     let creatorId: number | null = null;
 
     if (typeof event.created_by === 'object' && event.created_by !== null) {
-      // @ts-ignore
       creatorId = (event.created_by as any).id || (event.created_by as any).user || (event.created_by as any).user_id;
     } else if (typeof event.created_by === 'string') {
       creatorId = parseInt(event.created_by, 10);
@@ -324,15 +401,12 @@ export default function FeedPage() {
     return currentUserIdNum === creatorId;
   };
 
-  // Open edit modal
   const handleEditEvent = (event: Event) => {
     try {
-      console.log('Editing event:', event);
       setEditingEvent(event);
       setEditTitle(event.title || '');
       setEditDescription(event.description || '');
 
-      // Robust date formatting to prevent crash
       let dateValue = '';
       if (typeof event.start_date === 'string' && event.start_date.length >= 16) {
         dateValue = event.start_date.slice(0, 16);
@@ -347,10 +421,8 @@ export default function FeedPage() {
         }
       }
       setEditDate(dateValue);
-
       setEditLocation(event.location_name || '');
 
-      // Handle potential object format for event_type
       let typeId: number | '' = '';
       if (event.event_type && typeof event.event_type === 'object') {
         typeId = (event.event_type as any).id || '';
@@ -359,7 +431,6 @@ export default function FeedPage() {
       }
       setEditEventType(typeId as number);
 
-      // Handle potential object format for visibility
       let visibilityId: number | '' = '';
       if (event.visibility && typeof event.visibility === 'object') {
         visibilityId = (event.visibility as any).id || '';
@@ -372,14 +443,12 @@ export default function FeedPage() {
       setShowEditModal(true);
     } catch (error) {
       console.error('Error in handleEditEvent:', error);
-      // Fallback to prevent white screen
       setSuccessMessage('Failed to open edit modal. Please try again.');
       setShowSuccessMessage(true);
       setTimeout(() => setShowSuccessMessage(false), 3000);
     }
   };
 
-  // Update event
   const handleUpdateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingEvent) return;
@@ -411,7 +480,6 @@ export default function FeedPage() {
       setShowSuccessMessage(true);
       setTimeout(() => setShowSuccessMessage(false), 3000);
 
-      // Reset edit state
       setShowEditModal(false);
       setEditingEvent(null);
       setEditTitle('');
@@ -423,7 +491,6 @@ export default function FeedPage() {
       setEditImage(null);
       setEditImagePreview('');
 
-      // Reload events
       loadEvents();
     } catch (error) {
       console.error('Failed to update event:', error);
@@ -432,7 +499,6 @@ export default function FeedPage() {
     }
   };
 
-  // Delete event
   const handleDeleteEvent = async (eventId: number) => {
     setEventToDeleteId(eventId);
     setShowDeleteModal(true);
@@ -449,7 +515,6 @@ export default function FeedPage() {
       setShowSuccessMessage(true);
       setTimeout(() => setShowSuccessMessage(false), 3000);
 
-      // Reload events
       loadEvents();
       setShowDeleteModal(false);
       setEventToDeleteId(null);
@@ -465,27 +530,18 @@ export default function FeedPage() {
 
     try {
       setCreatingEventType(true);
-
       const created = await eventService.createEventType({
         title: newEventType,
         is_public: true
       });
-
-      // Update local eventTypes list immediately so it shows up in suggestions
       setEventTypes(prev => [...prev, created]);
-
-      // Select the newly created type and show its title immediately
       setEventType(created.id);
       setTempEventTypeTitle(newEventType);
-
       setSuccessMessage(`✨ "${newEventType}" created successfully!`);
       setShowSuccessMessage(true);
       setTimeout(() => setShowSuccessMessage(false), 3000);
-
       setNewEventType('');
       setShowEventTypeDropdown(false);
-
-      // Still reload to ensure synchronicity with backend
       await loadEventTypes();
     } catch (error) {
       console.error('Failed to create event type:', error);
@@ -498,22 +554,27 @@ export default function FeedPage() {
     e.preventDefault();
 
     if (activeTab === 'posts') {
-      // Create regular post
-      if (!postContent.trim() && !selectedImage) return;
+      if (!postContent.trim() && selectedMedia.length === 0) return;
 
       try {
         setPosting(true);
-        await postService.createPost({
-          content: postContent,
-          image: selectedImage
+        const formData = new FormData();
+        formData.append('content', postContent);
+        formData.append('visibility', postVisibility);
+
+        selectedMedia.forEach((file, index) => {
+          formData.append('media', file);
+          formData.append('media_captions', mediaCaptions[index] || "");
         });
 
+        await postService.createPost(formData);
+
         setPostContent('');
-        setSelectedImage(null);
-        setImagePreview('');
+        setSelectedMedia([]);
+        setMediaPreviews([]);
+        setMediaCaptions([]);
         loadPosts();
 
-        // Show success message for post
         setSuccessMessage(`✨ Post created successfully!`);
         setShowSuccessMessage(true);
         setTimeout(() => setShowSuccessMessage(false), 3000);
@@ -523,54 +584,41 @@ export default function FeedPage() {
         setPosting(false);
       }
     } else {
-      // Create event post
       try {
         setPosting(true);
-
-        // Create FormData for event creation
         const formData = new FormData();
         formData.append('title', eventTitle);
         formData.append('description', eventDescription);
-
         if (eventDate) {
-          try {
-            formData.append('start_date', new Date(eventDate).toISOString());
-          } catch (e) {
-            console.error('Invalid date format:', eventDate);
-          }
+          formData.append('start_date', new Date(eventDate).toISOString());
         }
-
         if (eventType) {
           formData.append('event_type', eventType.toString());
         }
-
         if (eventLocation) {
           formData.append('location_name', eventLocation);
         }
-
-        if (selectedImage) {
-          formData.append('cover_image', selectedImage);
+        if (selectedMedia[0]) {
+          formData.append('cover_image', selectedMedia[0]);
         }
 
         await eventService.createEvent(formData);
 
-        // Show success message
         const selectedType = eventTypes.find(t => t.id === eventType);
-        setSuccessMessage(`✨ "${eventTitle}" event created successfully with type "${selectedType?.title}"!`);
+        setSuccessMessage(`✨ "${eventTitle}" event created successfully!`);
         setShowSuccessMessage(true);
         setTimeout(() => setShowSuccessMessage(false), 3000);
 
-        // Reset form
         setEventTitle('');
         setEventDescription('');
         setEventDate('');
         setEventLocation('');
         setEventType('');
         setTempEventTypeTitle('');
-        setSelectedImage(null);
-        setImagePreview('');
+        setSelectedMedia([]);
+        setMediaPreviews([]);
+        setMediaCaptions([]);
 
-        // Reload events
         loadEvents();
       } catch (error) {
         console.error('Failed to create event:', error);
@@ -583,23 +631,13 @@ export default function FeedPage() {
   const handleRSVP = async (eventId: number, response: 'GOING' | 'MAYBE' | 'NOT_GOING') => {
     try {
       setRsvpLoading(prev => ({ ...prev, [eventId]: true }));
-
-      const rsvpData: RSVPData = {
-        response: response,
-        guests_count: 0
-      };
-
+      const rsvpData: RSVPData = { response, guests_count: 0 };
       await eventService.rsvpToEvent(eventId, rsvpData);
-
-      // Update local event state
       setEvents(events.map(event => {
         if (event.id === eventId) {
           return {
             ...event,
-            user_rsvp: {
-              response,
-              guests_count: 0
-            },
+            user_rsvp: { response, guests_count: 0 },
             rsvp_going: response === 'GOING' ? event.rsvp_going + 1 : event.rsvp_going,
             rsvp_maybe: response === 'MAYBE' ? event.rsvp_maybe + 1 : event.rsvp_maybe,
             rsvp_not_going: response === 'NOT_GOING' ? event.rsvp_not_going + 1 : event.rsvp_not_going
@@ -617,15 +655,10 @@ export default function FeedPage() {
   const handleCancelRSVP = async (eventId: number) => {
     try {
       setRsvpLoading(prev => ({ ...prev, [eventId]: true }));
-
       await eventService.cancelRSVP(eventId);
-
-      // Update local event state
       setEvents(events.map(event => {
         if (event.id === eventId) {
           const updatedEvent = { ...event, user_rsvp: undefined };
-
-          // Decrement the appropriate count
           if (event.user_rsvp?.response === 'GOING') {
             updatedEvent.rsvp_going = event.rsvp_going - 1;
           } else if (event.user_rsvp?.response === 'MAYBE') {
@@ -633,7 +666,6 @@ export default function FeedPage() {
           } else if (event.user_rsvp?.response === 'NOT_GOING') {
             updatedEvent.rsvp_not_going = event.rsvp_not_going - 1;
           }
-
           return updatedEvent;
         }
         return event;
@@ -645,44 +677,78 @@ export default function FeedPage() {
     }
   };
 
-  const handleLike = async (postId: number) => {
-    try {
-      const post = posts.find(p => p.id === postId);
-      if (post?.is_liked) {
-        await postService.unlikePost(postId);
-      } else {
-        await postService.likePost(postId);
-      }
-      loadPosts();
-    } catch (error) {
-      console.error('Failed to like post:', error);
-    }
+  const handlePostLike = (postId: number, data: any) => {
+    setPosts(prevPosts => prevPosts.map(post =>
+      post.id === postId
+        ? { 
+            ...post, 
+            user_interaction: { 
+              ...post.user_interaction, 
+              is_liked: data.is_liked 
+            },
+            engagement: {
+              ...post.engagement,
+              likes_count: data.likes_count
+            }
+          }
+        : post
+    ));
   };
 
-  const handleComment = async (postId: number) => {
-    const content = commentInputs[postId];
-    if (!content?.trim()) return;
-
-    try {
-      await postService.createComment(postId, content);
-      setCommentInputs({ ...commentInputs, [postId]: '' });
-      loadPosts();
-    } catch (error) {
-      console.error('Failed to comment:', error);
-    }
+  const handlePostSave = (postId: number, data: any) => {
+    setPosts(prevPosts => prevPosts.map(post =>
+      post.id === postId
+        ? { 
+            ...post, 
+            user_interaction: { 
+              ...post.user_interaction, 
+              is_saved: data.is_saved 
+            }
+          }
+        : post
+    ));
   };
 
-  const handleShare = async (postId: number) => {
-    try {
-      await postService.sharePost(postId);
-      loadPosts();
-    } catch (error) {
-      console.error('Failed to share post:', error);
-    }
+  const handlePostShare = (postId: number) => {
+    setPosts(prevPosts => prevPosts.map(post =>
+      post.id === postId
+        ? { 
+            ...post, 
+            engagement: {
+              ...post.engagement,
+              shares_count: (post.engagement?.shares_count || 0) + 1
+            }
+          }
+        : post
+    ));
   };
 
-  const toggleComments = (postId: number) => {
-    setShowComments({ ...showComments, [postId]: !showComments[postId] });
+  const handlePostReport = (postId: number, reason: string, description: string) => {
+    console.log('Post reported:', postId, reason, description);
+  };
+
+  const handlePostDeleted = (postId: number) => {
+    setPosts(posts.filter(post => post.id !== postId));
+    setSuccessMessage('Post deleted successfully');
+    setShowSuccessMessage(true);
+    setTimeout(() => setShowSuccessMessage(false), 3000);
+  };
+
+  const handlePostUpdated = (updatedPost: Post) => {
+    setPosts(posts.map(post =>
+      post.id === updatedPost.id ? updatedPost : post
+    ));
+    setSuccessMessage('Post updated successfully');
+    setShowSuccessMessage(true);
+    setTimeout(() => setShowSuccessMessage(false), 3000);
+  };
+
+  const toggleEventComments = async (eventId: number) => {
+    const isShowing = !showComments[eventId];
+    setShowComments({ ...showComments, [eventId]: isShowing });
+    if (isShowing) {
+      await loadEventComments(eventId);
+    }
   };
 
   const loadEventComments = async (eventId: number) => {
@@ -700,12 +766,10 @@ export default function FeedPage() {
   const handleAddEventComment = async (eventId: number) => {
     const content = commentInputs[eventId];
     if (!content?.trim()) return;
-
     try {
       await eventService.addComment(eventId, content);
       setCommentInputs({ ...commentInputs, [eventId]: '' });
-      loadEventComments(eventId);
-      // Reload events to update comment count
+      await loadEventComments(eventId);
       loadEvents();
     } catch (error) {
       console.error('Failed to add event comment:', error);
@@ -717,7 +781,7 @@ export default function FeedPage() {
     try {
       await eventService.updateComment(eventId, commentId, content);
       setEditingComment(null);
-      loadEventComments(eventId);
+      await loadEventComments(eventId);
     } catch (error) {
       console.error('Failed to update event comment:', error);
     }
@@ -727,7 +791,7 @@ export default function FeedPage() {
     if (!window.confirm('Are you sure you want to delete this comment?')) return;
     try {
       await eventService.deleteComment(eventId, commentId);
-      loadEventComments(eventId);
+      await loadEventComments(eventId);
       loadEvents();
     } catch (error) {
       console.error('Failed to delete event comment:', error);
@@ -740,7 +804,7 @@ export default function FeedPage() {
       await eventService.replyToComment(eventId, commentId, content);
       setReplyingToComment(null);
       setCommentInputs({ ...commentInputs, [`reply-${commentId}`]: '' });
-      loadEventComments(eventId);
+      await loadEventComments(eventId);
       loadEvents();
     } catch (error) {
       console.error('Failed to reply to comment:', error);
@@ -750,14 +814,11 @@ export default function FeedPage() {
   const handleReportEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!eventToReportId) return;
-
     try {
       setSendingReport(true);
       await eventService.flagEvent(eventToReportId, reportReason, reportDescription);
-
       setShowReportSuccess(true);
       setTimeout(() => setShowReportSuccess(false), 3000);
-
       setShowReportModal(false);
       setEventToReportId(null);
       setReportReason('INAPPROPRIATE');
@@ -766,14 +827,6 @@ export default function FeedPage() {
       console.error('Failed to report event:', error);
     } finally {
       setSendingReport(false);
-    }
-  };
-
-  const toggleEventComments = (eventId: number) => {
-    const isShowing = !showComments[eventId];
-    setShowComments({ ...showComments, [eventId]: isShowing });
-    if (isShowing) {
-      loadEventComments(eventId);
     }
   };
 
@@ -806,21 +859,11 @@ export default function FeedPage() {
     return `${baseClass} bg-gray-100 text-gray-600 hover:bg-gray-200 hover:shadow-sm transition-all`;
   };
 
-  // Helper function to get full image URL
   const getFullImageUrl = (url: string) => {
     if (!url) return '';
     if (url.startsWith('http')) return url;
     const cleanUrl = url.startsWith('/') ? url.substring(1) : url;
     return `${BASE_URL}${cleanUrl}`;
-  };
-
-  const getResponseIcon = (response: string) => {
-    switch (response) {
-      case 'GOING': return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'MAYBE': return <AlertCircle className="h-4 w-4 text-yellow-500" />;
-      case 'NOT_GOING': return <XCircle className="h-4 w-4 text-red-500" />;
-      default: return null;
-    }
   };
 
   const getResponseColor = (response: string) => {
@@ -836,7 +879,7 @@ export default function FeedPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="h-12 w-12 text-purple-600 animate-spin mx-auto mb-4" />
+          <Loader2 className="h-12 w-12 text-amber-600 animate-spin mx-auto mb-4" />
           <p className="text-gray-600 font-medium">Loading your feed...</p>
         </div>
       </div>
@@ -911,7 +954,7 @@ export default function FeedPage() {
               </div>
             )}
 
-            {/* Report Success Toast (Green) */}
+            {/* Report Success Toast */}
             {showReportSuccess && (
               <div className="fixed top-28 right-4 z-110 animate-slide-in">
                 <div className="bg-green-50 border border-green-200 rounded-2xl shadow-2xl p-4 flex items-center space-x-3 backdrop-blur-md">
@@ -1062,7 +1105,7 @@ export default function FeedPage() {
                             }}
                             className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600"
                           >
-                            <TrashIcon className="h-4 w-4" />
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       )}
@@ -1154,7 +1197,6 @@ export default function FeedPage() {
             {showGuestModal && selectedEventForGuests && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-120 p-4">
                 <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden animate-scale-in flex flex-col">
-                  {/* Header with Gradient */}
                   <div className="bg-linear-to-r from-amber-600 via-orange-500 to-yellow-500 p-6 text-white">
                     <div className="flex justify-between items-start">
                       <div>
@@ -1183,10 +1225,8 @@ export default function FeedPage() {
                         <X className="h-6 w-6" />
                       </button>
                     </div>
-
                   </div>
 
-                  {/* Filter Tabs */}
                   <div className="p-4 border-b border-gray-200 bg-gray-50">
                     <div className="flex space-x-2">
                       <button
@@ -1248,16 +1288,10 @@ export default function FeedPage() {
                     </div>
                   </div>
 
-                  {/* Guest List */}
                   <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
                     {loadingGuests ? (
                       <div className="text-center py-12">
-                        <div className="relative">
-                          <Loader2 className="h-12 w-12 animate-spin mx-auto text-amber-600" />
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="h-8 w-8 bg-white rounded-full"></div>
-                          </div>
-                        </div>
+                        <Loader2 className="h-12 w-12 animate-spin mx-auto text-amber-600" />
                         <p className="text-gray-500 mt-4 font-medium">Loading guest list...</p>
                       </div>
                     ) : guests.length === 0 ? (
@@ -1332,7 +1366,6 @@ export default function FeedPage() {
                     )}
                   </div>
 
-                  {/* Footer */}
                   <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
                     <div className="text-sm text-gray-500">
                       Showing {guests.length} of {guestStats.total} responses
@@ -1435,10 +1468,10 @@ export default function FeedPage() {
             )}
 
             {/* Create Post/Event Card */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-purple-100 overflow-hidden hover:shadow-2xl transition-shadow">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-amber-100 overflow-hidden hover:shadow-2xl transition-shadow">
 
-              {/* Main Tabs - Posts and Events */}
-              <div className="flex border-b border-purple-100 bg-white/50 px-6 pt-2">
+              {/* Main Tabs */}
+              <div className="flex border-b border-amber-100 bg-white/50 px-6 pt-2">
                 <button
                   onClick={() => setActiveTab('posts')}
                   className={`relative flex items-center space-x-2 px-6 py-3 font-medium text-sm transition-all ${activeTab === 'posts'
@@ -1447,11 +1480,7 @@ export default function FeedPage() {
                     }`}
                 >
                   <span>{language === 'ta' ? '📝 பதிவுகள்' : '📝 Posts'}</span>
-                  {activeTab === 'posts' && (
-                    <span className="absolute bottom-0 left-0 w-full h-0.5 bg-amber-600 rounded-t-full"></span>
-                  )}
                 </button>
-
                 <button
                   onClick={() => setActiveTab('events')}
                   className={`relative flex items-center space-x-2 px-6 py-3 font-medium text-sm transition-all ${activeTab === 'events'
@@ -1461,9 +1490,6 @@ export default function FeedPage() {
                 >
                   <Calendar className="h-4 w-4" />
                   <span>{language === 'ta' ? '🎉 நிகழ்வுகள்' : '🎉 Events'}</span>
-                  {activeTab === 'events' && (
-                    <span className="absolute bottom-0 left-0 w-full h-0.5 bg-amber-600 rounded-t-full"></span>
-                  )}
                 </button>
               </div>
 
@@ -1478,23 +1504,53 @@ export default function FeedPage() {
                     rows={3}
                   />
 
-                  {imagePreview && (
-                    <div className="relative mt-4">
-                      <img src={imagePreview} alt="Preview" className="w-full h-64 object-cover rounded-xl shadow-md" />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedImage(null);
-                          setImagePreview('');
-                        }}
-                        className="absolute top-3 right-3 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 shadow-lg transition-all hover:scale-110"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                  {/* Media Previews */}
+                  {mediaPreviews.length > 0 && (
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      {mediaPreviews.map((preview, index) => (
+                        <div key={index} className="relative group">
+                          {preview ? (
+                            <img src={preview} alt={`Preview ${index + 1}`} className="w-full h-32 object-cover rounded-xl" />
+                          ) : (
+                            <div className="w-full h-32 bg-gray-100 rounded-xl flex items-center justify-center">
+                              <FileText className="h-8 w-8 text-gray-400" />
+                              <span className="text-xs text-gray-500 ml-2">{selectedMedia[index]?.name}</span>
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeMedia(index)}
+                            className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full hover:bg-red-600 shadow-lg"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                          <input
+                            type="text"
+                            value={mediaCaptions[index]}
+                            onChange={(e) => updateMediaCaption(index, e.target.value)}
+                            placeholder="Add caption..."
+                            className="absolute bottom-2 left-2 right-2 px-2 py-1 text-xs bg-black/50 text-white rounded-lg focus:outline-none"
+                          />
+                        </div>
+                      ))}
                     </div>
                   )}
 
-                  {/* Media Tabs - Photos and Videos */}
+                  {/* Visibility Selector */}
+                  <div className="mt-4 flex items-center space-x-2">
+                    <label className="text-sm text-gray-600">Visibility:</label>
+                    <select
+                      value={postVisibility}
+                      onChange={(e) => setPostVisibility(e.target.value)}
+                      className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
+                    >
+                      <option value="public">🌍 Public</option>
+                      <option value="connections">👥 Connections</option>
+                      {/* <option value="custom">🔒 Custom</option> */}
+                    </select>
+                  </div>
+
+                  {/* Media Upload */}
                   <div className="mt-4 border-t border-gray-100 pt-4">
                     <div className="flex items-center space-x-4">
                       <button
@@ -1506,9 +1562,8 @@ export default function FeedPage() {
                           }`}
                       >
                         <Camera className="h-5 w-5" />
-                        <span className="text-sm font-medium">{language === 'ta' ? 'புகைப்படங்கள்' : 'Photos'}</span>
+                        <span className="text-sm font-medium">Photos</span>
                       </button>
-
                       <button
                         type="button"
                         onClick={() => setActiveMediaTab('videos')}
@@ -1518,52 +1573,45 @@ export default function FeedPage() {
                           }`}
                       >
                         <Video className="h-5 w-5" />
-                        <span className="text-sm font-medium">{language === 'ta' ? 'காணொளிகள்' : 'Videos'}</span>
+                        <span className="text-sm font-medium">Videos</span>
                       </button>
                     </div>
 
-                    {/* Media Upload Area */}
                     <div className="mt-4">
-                      {activeMediaTab === 'photos' ? (
-                        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-amber-500 hover:bg-amber-50 transition-all group">
-                          <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                            <ImageIcon className="h-8 w-8 text-gray-400 group-hover:text-green-500 mb-2 transition-colors" />
-                            <p className="text-sm text-gray-500 group-hover:text-green-600">
-                              {language === 'ta' ? 'புகைப்படங்களை பதிவேற்ற கிளிக் செய்யவும்' : 'Click to upload photos'}
-                            </p>
-                          </div>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleImageSelect}
-                            className="hidden"
-                          />
-                        </label>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50">
-                          <Video className="h-8 w-8 text-gray-400 mb-2" />
-                          <p className="text-sm text-gray-500">Video upload coming soon</p>
+                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-amber-500 hover:bg-amber-50 transition-all group">
+                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                          <ImageIcon className="h-8 w-8 text-gray-400 group-hover:text-amber-500 mb-2 transition-colors" />
+                          <p className="text-sm text-gray-500 group-hover:text-amber-600">
+                            Click to upload photos/videos
+                          </p>
+                          <p className="text-xs text-gray-400 mt-1">Up to 10 files</p>
                         </div>
-                      )}
+                        <input
+                          type="file"
+                          accept={activeMediaTab === 'photos' ? 'image/*' : 'video/*'}
+                          multiple
+                          onChange={handleMediaSelect}
+                          className="hidden"
+                        />
+                      </label>
                     </div>
                   </div>
 
-                  {/* Post Button */}
                   <div className="flex items-center justify-end mt-4 pt-4 border-t border-gray-100">
                     <button
                       type="submit"
-                      disabled={posting || (!postContent.trim() && !selectedImage)}
+                      disabled={posting || (!postContent.trim() && selectedMedia.length === 0)}
                       className="px-6 py-2 bg-linear-to-r from-amber-600 to-orange-600 text-white rounded-xl font-medium hover:from-amber-700 hover:to-orange-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center shadow-lg hover:shadow-xl"
                     >
                       {posting ? (
                         <>
                           <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                          {language === 'ta' ? 'பதிவிடுகிறது...' : 'Posting...'}
+                          Posting...
                         </>
                       ) : (
                         <>
                           <Send className="h-4 w-4 mr-2" />
-                          {language === 'ta' ? 'பதிவைப் பகிரவும்' : 'Share Post'}
+                          Share Post
                         </>
                       )}
                     </button>
@@ -1641,7 +1689,7 @@ export default function FeedPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       <span className="flex items-center">
                         <Tag className="h-4 w-4 mr-1 text-amber-500" />
-                        {language === 'ta' ? 'நிகழ்வு வகை' : 'Event Type'} <span className="text-red-500 ml-1">*</span>
+                        Event Type <span className="text-red-500 ml-1">*</span>
                       </span>
                     </label>
                     <div className="relative">
@@ -1672,7 +1720,6 @@ export default function FeedPage() {
 
                       {showEventTypeDropdown && (
                         <div className="absolute z-20 mt-2 w-full bg-white border border-amber-100 rounded-xl shadow-xl max-h-80 overflow-hidden">
-                          {/* Search/Create Header */}
                           <div className="p-3 border-b border-amber-100 bg-linear-to-r from-amber-50 to-orange-50">
                             <div className="flex items-center space-x-2">
                               <input
@@ -1701,7 +1748,6 @@ export default function FeedPage() {
                             </div>
                           </div>
 
-                          {/* Popular/Suggested Types */}
                           {eventTypes.length > 0 && (
                             <div className="p-2 border-b border-gray-100 bg-gray-50">
                               <p className="text-xs font-medium text-gray-500 px-2 mb-1">POPULAR TYPES</p>
@@ -1724,7 +1770,6 @@ export default function FeedPage() {
                             </div>
                           )}
 
-                          {/* All Types List */}
                           <div className="max-h-48 overflow-y-auto">
                             {loadingEventTypes ? (
                               <div className="p-8 text-center">
@@ -1781,21 +1826,19 @@ export default function FeedPage() {
                         Cover Image
                       </span>
                     </label>
-                    {imagePreview ? (
+                    {mediaPreviews[0] ? (
                       <div className="relative group">
-                        <img src={imagePreview} alt="Cover preview" className="w-full h-48 object-cover rounded-xl shadow-md" />
-                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all rounded-xl flex items-center justify-center">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedImage(null);
-                              setImagePreview('');
-                            }}
-                            className="opacity-0 group-hover:opacity-100 transform scale-90 group-hover:scale-100 transition-all p-2 bg-red-500 text-white rounded-full hover:bg-red-600 shadow-lg"
-                          >
-                            <Trash2 className="h-5 w-5" />
-                          </button>
-                        </div>
+                        <img src={mediaPreviews[0]} alt="Cover preview" className="w-full h-48 object-cover rounded-xl shadow-md" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedMedia([]);
+                            setMediaPreviews([]);
+                          }}
+                          className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 shadow-lg"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
                     ) : (
                       <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-amber-500 hover:bg-amber-50 transition-all group">
@@ -1806,14 +1849,13 @@ export default function FeedPage() {
                         <input
                           type="file"
                           accept="image/*"
-                          onChange={handleImageSelect}
+                          onChange={handleMediaSelect}
                           className="hidden"
                         />
                       </label>
                     )}
                   </div>
 
-                  {/* Create Event Button */}
                   <div className="flex items-center justify-end pt-4 border-t border-gray-100">
                     <button
                       type="submit"
@@ -1837,7 +1879,7 @@ export default function FeedPage() {
               )}
             </div>
 
-            {/* Event Filter Tabs (only shown when events tab is active) */}
+            {/* Event Filter Tabs */}
             {activeTab === 'events' && (
               <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-lg p-2 flex flex-wrap gap-2 border border-amber-100">
                 <button
@@ -1848,7 +1890,7 @@ export default function FeedPage() {
                     }`}
                 >
                   <List className="h-4 w-4 inline mr-1" />
-                  {language === 'ta' ? 'அனைத்து நிகழ்வுகளும்' : 'All Events'}
+                  All Events
                 </button>
                 <button
                   onClick={() => setEventFilter('upcoming')}
@@ -1857,7 +1899,7 @@ export default function FeedPage() {
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
-                  📅 {language === 'ta' ? 'வரவிருக்கும்' : 'Upcoming'}
+                  📅 Upcoming
                 </button>
                 <button
                   onClick={() => setEventFilter('past')}
@@ -1866,7 +1908,7 @@ export default function FeedPage() {
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
-                  ⏰ {language === 'ta' ? 'கடந்தவை' : 'Past'}
+                  ⏰ Past
                 </button>
                 <button
                   onClick={() => setEventFilter('myevents')}
@@ -1875,7 +1917,7 @@ export default function FeedPage() {
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
-                  ✨ {language === 'ta' ? 'எனது நிகழ்வுகள்' : 'My Events'}
+                  ✨ My Events
                 </button>
                 <button
                   onClick={() => setEventFilter('myrsvps')}
@@ -1884,7 +1926,7 @@ export default function FeedPage() {
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
-                  📋 {language === 'ta' ? 'எனது பதில்கள்' : 'My RSVPs'}
+                  📋 My RSVPs
                 </button>
                 <button
                   onClick={() => setEventFilter('myreplies')}
@@ -1893,151 +1935,81 @@ export default function FeedPage() {
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
-                  💬 {language === 'ta' ? 'எனது பதில்கள் (கருத்து)' : 'My Replies'}
+                  💬 My Replies
+                </button>
+              </div>
+            )}
+
+            {/* Post Filter Tabs */}
+            {activeTab === 'posts' && (
+              <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-lg p-2 flex flex-wrap gap-2 border border-amber-100 mb-6">
+                <button
+                  onClick={() => setPostFilter('all')}
+                  className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${postFilter === 'all'
+                    ? 'bg-linear-to-r from-amber-600 to-orange-600 text-white shadow-md'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                >
+                  <List className="h-4 w-4 inline mr-1" />
+                  All Posts
+                </button>
+                <button
+                  onClick={() => setPostFilter('myposts')}
+                  className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${postFilter === 'myposts'
+                    ? 'bg-linear-to-r from-amber-600 to-orange-600 text-white shadow-md'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                >
+                  My Posts
                 </button>
               </div>
             )}
 
             {/* Content Feed */}
             {activeTab === 'posts' ? (
-              /* Posts Feed */
+              /* Posts Feed - Using the Post component */
               posts.length === 0 ? (
                 <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-amber-100">
                   <div className="w-20 h-20 bg-linear-to-br from-amber-100 to-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <MessageCircle className="h-10 w-10 text-amber-500" />
                   </div>
-                  <p className="text-gray-700 text-lg font-medium">{language === 'ta' ? 'இன்னும் பதிவுகள் எதுவும் இல்லை' : 'No posts yet'}</p>
-                  <p className="text-gray-500 text-sm mt-2">{language === 'ta' ? 'முதல் பதிவைப் பகிரும் முதலாவதாக இருங்கள்!' : 'Be the first to share something!'}</p>
+                  <p className="text-gray-700 text-lg font-medium">No posts yet</p>
+                  <p className="text-gray-500 text-sm mt-2">
+                    {postFilter === 'myposts' ? "You haven't shared any posts yet." : "Be the first to share something!"}
+                  </p>
                 </div>
               ) : (
-                posts.map((post) => (
-                  <div key={post.id} className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-amber-100 overflow-hidden hover:shadow-2xl transition-all">
-                    {/* Post Header */}
-                    <div className="p-6 pb-4">
-                      <div className="flex items-center space-x-3 mb-4">
-                        <div className="w-12 h-12 bg-linear-to-br from-amber-500 to-orange-400 rounded-full flex items-center justify-center shadow-md">
-                          <span className="text-white font-bold text-lg">
-                            {post.user.name.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900">{post.user.name}</h3>
-                          <p className="text-sm text-gray-500">
-                            {new Date(post.created_at).toLocaleDateString(language === 'ta' ? 'ta-IN' : 'en-US', {
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              hour12: true
-                            })}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Post Content */}
-                      <p className="text-gray-800 mb-4 leading-relaxed">{post.content}</p>
-
-                      {/* Post Image */}
-                      {post.image && (
-                        <div className="relative mb-4 rounded-xl overflow-hidden">
-                          <img src={post.image} alt="Post" className="w-full object-cover" />
-                        </div>
-                      )}
-
-                      {/* Post Stats */}
-                      <div className="flex items-center justify-between text-sm text-gray-500 mb-4 pb-4 border-b border-gray-100">
-                        <span className="flex items-center">
-                          <Heart className="h-4 w-4 mr-1 text-red-400" />
-                          {post.likes_count} {language === 'ta' ? 'விருப்பங்கள்' : (post.likes_count === 1 ? 'Like' : 'Likes')}
-                        </span>
-                        <div className="flex space-x-4">
-                          <span className="flex items-center">
-                            <MessageCircle className="h-4 w-4 mr-1 text-blue-400" />
-                            {post.comments_count} {language === 'ta' ? 'கருத்துகள்' : (post.comments_count === 1 ? 'Comment' : 'Comments')}
-                          </span>
-                          <span className="flex items-center">
-                            <Share2 className="h-4 w-4 mr-1 text-green-400" />
-                            {post.shares_count} {language === 'ta' ? 'பகிர்வுகள்' : (post.shares_count === 1 ? 'Share' : 'Shares')}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Post Actions */}
-                      <div className="flex items-center justify-around">
-                        <button
-                          onClick={() => handleLike(post.id)}
-                          className={`flex items-center space-x-2 px-6 py-2 rounded-xl transition-all ${post.is_liked
-                            ? 'text-red-600 bg-red-50 hover:bg-red-100'
-                            : 'text-gray-600 hover:bg-gray-100'
-                            }`}
-                        >
-                          <Heart className={`h-5 w-5 ${post.is_liked ? 'fill-current' : ''}`} />
-                          <span className="font-medium">{language === 'ta' ? 'விருப்பம்' : 'Like'}</span>
-                        </button>
-
-                        <button
-                          onClick={() => toggleComments(post.id)}
-                          className="flex items-center space-x-2 px-6 py-2 rounded-xl text-gray-600 hover:bg-gray-100 transition-all"
-                        >
-                          <MessageCircle className="h-5 w-5" />
-                          <span className="font-medium">{language === 'ta' ? 'கருத்து' : 'Comment'}</span>
-                        </button>
-
-                        <button
-                          onClick={() => handleShare(post.id)}
-                          className="flex items-center space-x-2 px-6 py-2 rounded-xl text-gray-600 hover:bg-gray-100 transition-all"
-                        >
-                          <Share2 className="h-5 w-5" />
-                          <span className="font-medium">{language === 'ta' ? 'பகிர்' : 'Share'}</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Comments Section */}
-                    {showComments[post.id] && (
-                      <div className="bg-gray-50 p-6 pt-4 border-t border-gray-200">
-                        <div className="flex items-center space-x-3">
-                          <input
-                            type="text"
-                            value={commentInputs[post.id] || ''}
-                            onChange={(e) =>
-                              setCommentInputs({ ...commentInputs, [post.id]: e.target.value })
-                            }
-                            className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white"
-                            placeholder={language === 'ta' ? 'கருத்து எழுதுங்கள்...' : 'Write a comment...'}
-                            onKeyPress={(e) => {
-                              if (e.key === 'Enter') {
-                                handleComment(post.id);
-                              }
-                            }}
-                          />
-                          <button
-                            onClick={() => handleComment(post.id)}
-                            className="p-3 bg-linear-to-r from-amber-600 to-orange-600 text-white rounded-xl hover:from-amber-700 hover:to-orange-700 transition-all shadow-md hover:shadow-lg"
-                          >
-                            <Send className="h-5 w-5" />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))
+                <div className="space-y-6">
+                  {posts.map((post) => (
+                    <Post
+                      key={post.id}
+                      post={post}
+                      onLike={handlePostLike}
+                      onSave={handlePostSave}
+                      onShare={handlePostShare}
+                      onReport={handlePostReport}
+                      onCommentAdded={() => fetchAndUpdatePost(post.id)}
+                      onPostDeleted={handlePostDeleted}
+                      onPostUpdated={handlePostUpdated}
+                      currentUser={profile}
+                    />
+                  ))}
+                </div>
               )
             ) : (
               /* Events Feed */
               eventsLoading ? (
                 <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-amber-100">
                   <Loader2 className="h-12 w-12 text-amber-600 animate-spin mx-auto" />
-                  <p className="text-gray-600 mt-4 font-medium">{language === 'ta' ? 'நிகழ்வுகளை ஏற்றுகிறது...' : 'Loading amazing events...'}</p>
+                  <p className="text-gray-600 mt-4 font-medium">Loading amazing events...</p>
                 </div>
               ) : events.length === 0 ? (
                 <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-amber-100">
                   <div className="w-20 h-20 bg-linear-to-br from-amber-100 to-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Calendar className="h-10 w-10 text-amber-500" />
                   </div>
-                  <p className="text-gray-700 text-lg font-medium">{language === 'ta' ? 'நிகழ்வுகள் எதுவும் இல்லை' : 'No events found'}</p>
-                  <p className="text-gray-500 text-sm mt-2">{language === 'ta' ? 'முதல் நிகழ்வை உருவாக்கி கொண்டாட்டத்தைத் தொடங்குங்கள்! 🎉' : 'Create your first event and start the party! 🎉'}</p>
+                  <p className="text-gray-700 text-lg font-medium">No events found</p>
+                  <p className="text-gray-500 text-sm mt-2">Create your first event and start the party! 🎉</p>
                 </div>
               ) : (
                 events.map((event) => (
@@ -2071,9 +2043,7 @@ export default function FeedPage() {
                           </div>
                         </div>
 
-                        {/* Right Corner: Status & 3-Dots */}
                         <div className="flex items-center space-x-3">
-                          {/* Status Badge - Only for My Events */}
                           {eventFilter === 'myevents' && (
                             <span className={`px-3 py-1.5 rounded-full text-xs font-medium shadow-sm ${event.status === 'APPROVED' ? 'bg-green-100 text-green-700 border border-green-200' :
                               event.status === 'PENDING' ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' :
@@ -2084,7 +2054,6 @@ export default function FeedPage() {
                             </span>
                           )}
 
-                          {/* 3-Dots Menu - Restricted to My Events per user preference */}
                           {eventFilter === 'myevents' && (
                             <div className="relative">
                               <button
@@ -2092,49 +2061,33 @@ export default function FeedPage() {
                                   e.stopPropagation();
                                   setActiveEventMenu(activeEventMenu === event.id ? null : event.id);
                                 }}
-                                className="p-2 hover:bg-gray-100 rounded-full transition-all text-gray-400 hover:text-gray-600 flex items-center justify-center"
-                                title="More options"
+                                className="p-2 hover:bg-gray-100 rounded-full transition-all text-gray-400 hover:text-gray-600"
                               >
                                 <MoreVertical className="h-5 w-5" />
                               </button>
 
                               {activeEventMenu === event.id && (
                                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 z-50 animate-scale-in py-1">
-                                  {/* <button
+                                  <button
                                     onClick={() => {
-                                      toggleEventDetails(event.id);
+                                      handleEditEvent(event);
                                       setActiveEventMenu(null);
                                     }}
                                     className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-amber-50 hover:text-amber-700 transition-colors"
                                   >
-                                    <Eye className="h-4 w-4" />
-                                    <span className="font-medium">{showEventDetails[event.id] ? 'Hide Details' : 'View Details'}</span>
-                                  </button> */}
-
-                                  {(isEventCreator(event) || eventFilter === 'myevents') && (
-                                    <>
-                                      <button
-                                        onClick={() => {
-                                          handleEditEvent(event);
-                                          setActiveEventMenu(null);
-                                        }}
-                                        className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-amber-50 hover:text-amber-700 transition-colors"
-                                      >
-                                        <Edit2 className="h-4 w-4" />
-                                        <span className="font-medium">Edit Event</span>
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          handleDeleteEvent(event.id);
-                                          setActiveEventMenu(null);
-                                        }}
-                                        className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                                      >
-                                        <TrashIcon className="h-4 w-4" />
-                                        <span className="font-medium">Delete Event</span>
-                                      </button>
-                                    </>
-                                  )}
+                                    <Edit2 className="h-4 w-4" />
+                                    <span>Edit Event</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      handleDeleteEvent(event.id);
+                                      setActiveEventMenu(null);
+                                    }}
+                                    className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                    <span>Delete Event</span>
+                                  </button>
                                 </div>
                               )}
                             </div>
@@ -2142,28 +2095,24 @@ export default function FeedPage() {
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between">
-                        {/* View Guests Button - Only visible in My Events */}
-                        {eventFilter === 'myevents' && (
-                          <button
-                            onClick={() => handleViewGuests(event)}
-                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 flex items-center border shadow-sm hover:shadow-md ${isEventCreator(event)
-                              ? 'bg-linear-to-r from-amber-100 to-orange-100 text-amber-700 hover:from-amber-200 hover:to-orange-200 border-amber-200'
-                              : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200'
-                              }`}
-                          >
-                            <Users className="h-3 w-3 mr-1" />
-                            <span>{language === 'ta' ? 'விருந்தினர்களைக் காண்க' : 'View Guests'}</span>
-                            <span className="ml-1.5 px-1.5 py-0.5 bg-white rounded-full text-[10px] font-bold text-amber-600">
-                              {event.rsvp_going + event.rsvp_maybe + event.rsvp_not_going}
-                            </span>
-                          </button>
-                        )}
-                      </div>
+                      {eventFilter === 'myevents' && (
+                        <button
+                          onClick={() => handleViewGuests(event)}
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 flex items-center border shadow-sm hover:shadow-md ${isEventCreator(event)
+                            ? 'bg-linear-to-r from-amber-100 to-orange-100 text-amber-700 hover:from-amber-200 hover:to-orange-200 border-amber-200'
+                            : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200'
+                            }`}
+                        >
+                          <Users className="h-3 w-3 mr-1" />
+                          <span>View Guests</span>
+                          <span className="ml-1.5 px-1.5 py-0.5 bg-white rounded-full text-[10px] font-bold text-amber-600">
+                            {event.rsvp_going + event.rsvp_maybe + event.rsvp_not_going}
+                          </span>
+                        </button>
+                      )}
                     </div>
 
                     <div className="p-6 pt-0">
-                      {/* Event Details */}
                       <div className="mb-4">
                         <h2 className="text-xl font-bold text-gray-900 mb-2">{event.title}</h2>
                         <p className="text-gray-600 mb-4 leading-relaxed">{event.description}</p>
@@ -2192,7 +2141,6 @@ export default function FeedPage() {
                         </div>
                       </div>
 
-                      {/* Event Cover Image */}
                       {event.cover_image_url && (
                         <div className="mb-4 rounded-xl overflow-hidden shadow-md">
                           <img
@@ -2200,39 +2148,36 @@ export default function FeedPage() {
                             alt={event.title}
                             className="w-full h-48 object-cover hover:scale-105 transition-transform duration-300"
                             onError={(e) => {
-                              console.error('Image failed to load:', event.cover_image_url);
                               e.currentTarget.style.display = 'none';
                             }}
                           />
                         </div>
                       )}
 
-                      {/* RSVP Stats & Actions Bar */}
                       <div className="flex items-center justify-between text-sm text-gray-600 mb-4 pb-4 border-b border-gray-100">
                         <div className="flex items-center space-x-3">
-                          <span className="flex items-center bg-green-50 px-3 py-1.5 rounded-full" title="Going">
+                          <span className="flex items-center bg-green-50 px-3 py-1.5 rounded-full">
                             <CheckCircle className="h-4 w-4 mr-1 text-green-500" />
                             <span className="font-bold">{event.rsvp_going}</span>
                           </span>
-                          <span className="flex items-center bg-yellow-50 px-3 py-1.5 rounded-full" title="Maybe">
+                          <span className="flex items-center bg-yellow-50 px-3 py-1.5 rounded-full">
                             <AlertCircle className="h-4 w-4 mr-1 text-yellow-500" />
                             <span className="font-bold">{event.rsvp_maybe}</span>
                           </span>
-                          <span className="flex items-center bg-red-50 px-3 py-1.5 rounded-full" title="Not Going">
+                          <span className="flex items-center bg-red-50 px-3 py-1.5 rounded-full">
                             <XCircle className="h-4 w-4 mr-1 text-red-500" />
                             <span className="font-bold">{event.rsvp_not_going}</span>
                           </span>
                         </div>
 
                         <div className="flex items-center space-x-4">
-                          <div className="flex items-center text-gray-400" title="Views">
+                          <div className="flex items-center text-gray-400">
                             <Eye className="h-4 w-4 mr-1" />
                             <span className="font-medium">{event.view_count || 0}</span>
                           </div>
                           <button
                             onClick={() => toggleEventComments(event.id)}
                             className="flex items-center text-gray-500 hover:text-amber-600 transition-colors"
-                            title="Comments"
                           >
                             <MessageCircle className="h-4 w-4 mr-1" />
                             <span className="font-medium">{event.comment_count || event.comments_count || 0}</span>
@@ -2244,14 +2189,12 @@ export default function FeedPage() {
                               setShowReportModal(true);
                             }}
                             className="flex items-center text-gray-400 hover:text-red-500 transition-colors ml-4"
-                            title={language === 'ta' ? 'புகார் செய்' : 'Report Event'}
                           >
                             <Flag className="h-4 w-4" />
                           </button>
                         </div>
                       </div>
 
-                      {/* RSVP Actions */}
                       {new Date(event.start_date) > new Date() && (
                         <div className="flex items-center space-x-2 mb-4">
                           <button
@@ -2264,7 +2207,7 @@ export default function FeedPage() {
                             ) : (
                               <>
                                 <CheckCircle className="h-4 w-4" />
-                                <span>{language === 'ta' ? 'வருவேன்' : 'Going'}</span>
+                                <span>Going</span>
                               </>
                             )}
                           </button>
@@ -2279,7 +2222,7 @@ export default function FeedPage() {
                             ) : (
                               <>
                                 <AlertCircle className="h-4 w-4" />
-                                <span>{language === 'ta' ? 'வரலாம்' : 'Maybe'}</span>
+                                <span>Maybe</span>
                               </>
                             )}
                           </button>
@@ -2295,9 +2238,7 @@ export default function FeedPage() {
                               <>
                                 <XCircle className="h-4 w-4" />
                                 <span>
-                                  {event.user_rsvp?.response === 'NOT_GOING'
-                                    ? (language === 'ta' ? 'ரத்து' : 'Cancel')
-                                    : (language === 'ta' ? 'வரமாட்டேன்' : 'Not Going')}
+                                  {event.user_rsvp?.response === 'NOT_GOING' ? 'Cancel' : 'Not Going'}
                                 </span>
                               </>
                             )}
@@ -2305,15 +2246,13 @@ export default function FeedPage() {
                         </div>
                       )}
 
-                      {/* Event Comments Section */}
                       {showComments[event.id] && (
                         <div className="mt-4 border-t border-gray-100 pt-6 animate-scale-in">
                           <h4 className="font-bold text-gray-900 mb-4 flex items-center">
                             <MessageCircle className="h-5 w-5 mr-2 text-amber-500" />
-                            {language === 'ta' ? `கருத்துகள் (${event.comment_count || event.comments_count || 0})` : `Comments (${event.comment_count || event.comments_count || 0})`}
+                            Comments ({event.comment_count || event.comments_count || 0})
                           </h4>
 
-                          {/* Add Comment Input */}
                           <div className="flex items-start space-x-3 mb-6">
                             <div className="w-10 h-10 bg-linear-to-br from-amber-500 to-orange-400 rounded-full flex items-center justify-center shadow-sm shrink-0">
                               <span className="text-white font-bold text-sm">
@@ -2324,7 +2263,7 @@ export default function FeedPage() {
                               <textarea
                                 value={commentInputs[event.id] || ''}
                                 onChange={(e) => setCommentInputs({ ...commentInputs, [event.id]: e.target.value })}
-                                placeholder={language === 'ta' ? 'கருத்து எழுதுங்கள்...' : 'Write a comment...'}
+                                placeholder="Write a comment..."
                                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all text-sm resize-none"
                                 rows={1}
                                 onInput={(e) => {
@@ -2343,7 +2282,6 @@ export default function FeedPage() {
                             </div>
                           </div>
 
-                          {/* Comments List */}
                           <div className="space-y-4">
                             {loadingEventComments[event.id] ? (
                               <div className="flex justify-center py-4">
@@ -2351,11 +2289,11 @@ export default function FeedPage() {
                               </div>
                             ) : !eventComments[event.id] || eventComments[event.id].length === 0 ? (
                               <p className="text-center text-gray-400 text-sm py-4 italic">
-                                {language === 'ta' ? 'இதுவரை கருத்துகள் எதுவும் இல்லை. முதல் கருத்தை எழுதுங்கள்!' : 'No comments yet. Be the first to comment!'}
+                                No comments yet. Be the first to comment!
                               </p>
                             ) : (
                               eventComments[event.id].map(comment => (
-                                <CommentItem
+                                <EventCommentItem
                                   key={comment.id}
                                   comment={comment}
                                   eventId={event.id}
@@ -2370,39 +2308,33 @@ export default function FeedPage() {
                         </div>
                       )}
 
-                      {/* Show More Details */}
                       {showEventDetails[event.id] && (
                         <div className="mt-4 p-4 bg-linear-to-br from-amber-50 to-orange-50 rounded-xl space-y-2 border border-amber-100 animate-scale-in">
                           <h4 className="font-semibold text-amber-800 mb-3 flex items-center">
                             <Sparkles className="h-4 w-4 mr-2" />
-                            {language === 'ta' ? 'விரிவான தகவல்' : 'Detailed Information'}
+                            Detailed Information
                           </h4>
 
                           {event.is_virtual && event.virtual_link && (
                             <div className="text-sm flex items-center">
-                              <span className="font-medium text-gray-700 w-24">{language === 'ta' ? 'இணைப்பு:' : 'Link:'}</span>
+                              <span className="font-medium text-gray-700 w-24">Link:</span>
                               <a href={event.virtual_link} target="_blank" rel="noopener noreferrer"
                                 className="text-amber-600 hover:underline flex-1 truncate font-bold">
-                                {language === 'ta' ? 'மெய்நிகர் கூட்டத்தில் சேரவும்' : 'Join Virtual Meeting'}
+                                Join Virtual Meeting
                               </a>
                             </div>
                           )}
 
                           <div className="text-sm flex items-center">
-                            <span className="font-medium text-gray-700 w-24">{language === 'ta' ? 'உருவாக்கியவர்:' : 'Creator:'}</span>
+                            <span className="font-medium text-gray-700 w-24">Creator:</span>
                             <span className="text-gray-600 font-medium">{event.created_by_name}</span>
                           </div>
 
                           <div className="text-sm flex items-center">
-                            <span className="font-medium text-gray-700 w-24">{language === 'ta' ? 'வகை:' : 'Type:'}</span>
+                            <span className="font-medium text-gray-700 w-24">Type:</span>
                             <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">
                               {event.event_type_title}
                             </span>
-                          </div>
-
-                          <div className="text-sm flex items-center">
-                            <span className="font-medium text-gray-700 w-24">Event ID:</span>
-                            <span className="text-gray-400 text-xs font-mono">#{event.id}</span>
                           </div>
                         </div>
                       )}
@@ -2413,13 +2345,13 @@ export default function FeedPage() {
             )}
           </div>
 
-          {/* Right Sidebar - Upcoming Events & Community */}
+          {/* Right Sidebar */}
           <div className="hidden lg:block lg:col-span-3 sticky top-28 self-start h-[calc(100vh-7.5rem)] overflow-y-auto no-scrollbar pb-10 space-y-6">
             <div className="bg-white/80 backdrop-blur-md rounded-2xl p-6 shadow-sm border border-amber-100">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-gray-900 flex items-center">
                   <Calendar className="h-5 w-5 mr-2 text-amber-600" />
-                  {language === 'ta' ? 'வரவிருக்கும் நிகழ்வுகள்' : 'Upcoming Events'}
+                  Upcoming Events
                 </h3>
                 <Sparkles className="h-4 w-4 text-amber-500" />
               </div>
@@ -2445,15 +2377,15 @@ export default function FeedPage() {
                 ))}
                 {events.length === 0 && (
                   <div className="text-center py-4 text-gray-400">
-                    <CalendarIcon className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                    <p className="text-xs italic">{language === 'ta' ? 'வரவிருக்கும் நிகழ்வுகள் எதுவும் இல்லை' : 'No upcoming events'}</p>
+                    <Calendar className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                    <p className="text-xs italic">No upcoming events</p>
                   </div>
                 )}
                 <button
                   onClick={() => { setActiveTab('events'); setEventFilter('upcoming'); }}
                   className="w-full pt-2 text-sm text-amber-700 font-bold hover:text-orange-700 transition-colors flex items-center justify-center"
                 >
-                  {language === 'ta' ? 'அனைத்து நிகழ்வுகளையும் காண்க' : 'See All Events'}
+                  See All Events
                   <ChevronRight className="h-4 w-4 ml-1" />
                 </button>
               </div>
@@ -2463,28 +2395,27 @@ export default function FeedPage() {
               <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:bg-white/20 transition-all"></div>
               <h3 className="font-bold mb-2 relative z-10 flex items-center">
                 <Sparkles className="h-4 w-4 mr-2" />
-                {language === 'ta' ? 'விருட்சத்தை வளர்க்கவும்' : 'Grow your tree'}
+                Grow your tree
               </h3>
               <p className="text-sm text-white/80 mb-4 relative z-10">
-                {language === 'ta' ? 'உறவினர்களுடன் இணைந்து தலைமுறைகளைத் தாண்டி உங்கள் வேர்களைக் கண்டறியுங்கள்.' : 'Connect with relatives and discover your roots across generations.'}
+                Connect with relatives and discover your roots across generations.
               </p>
               <button
                 onClick={() => navigate('/genealogy')}
                 className="w-full py-2.5 bg-white text-amber-700 rounded-xl text-sm font-bold hover:bg-amber-50 hover:shadow-lg transition-all relative z-10 transform active:scale-95"
               >
-                {language === 'ta' ? 'கொடிவழி வரைபடத்திற்கு செல்லவும்' : 'Go to Genealogy'}
+                Go to Genealogy
               </button>
             </div>
           </div>
-
         </div>
       </div>
-    </div >
+    </div>
   );
 }
 
 // Sidebar Link Component
-function SidebarLink({ icon, label, active, onClick }: { icon: any, label: string, active?: boolean, onClick: () => void }) {
+function SidebarLink({ icon, label, active, onClick }: { icon: any; label: string; active?: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -2501,35 +2432,8 @@ function SidebarLink({ icon, label, active, onClick }: { icon: any, label: strin
   );
 }
 
-// Custom CSS at the end of file or in index.css
-const style = document.createElement('style');
-style.textContent = `
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-  .no-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-  @keyframes slide-in {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-  }
-  @keyframes scale-in {
-    from { transform: scale(0.95); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
-  }
-  .animate-slide-in {
-    animation: slide-in 0.3s ease-out forwards;
-  }
-  .animate-scale-in {
-    animation: scale-in 0.2s ease-out forwards;
-  }
-`;
-document.head.appendChild(style);
-
-// Comment Item Component
-function CommentItem({
+// Event Comment Item Component
+function EventCommentItem({
   comment,
   eventId,
   onReply,
@@ -2584,10 +2488,10 @@ function CommentItem({
                 />
                 <div className="flex justify-end space-x-2 mt-2">
                   <button onClick={() => setIsEditing(false)} className="px-2 py-1 text-xs text-gray-500">
-                    {language === 'ta' ? 'ரத்து' : 'Cancel'}
+                    Cancel
                   </button>
                   <button onClick={handleEditSubmit} className="px-3 py-1 bg-amber-600 text-white rounded-lg text-xs font-bold">
-                    {language === 'ta' ? 'சேமி' : 'Save'}
+                    Save
                   </button>
                 </div>
               </div>
@@ -2599,15 +2503,15 @@ function CommentItem({
           <div className="flex items-center space-x-4 mt-1 ml-2 text-[10px] font-bold text-gray-400">
             <span>{new Date(comment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             <button onClick={() => setIsReplying(!isReplying)} className="hover:text-amber-600 transition-colors uppercase">
-              {language === 'ta' ? 'பதில்' : 'Reply'}
+              Reply
             </button>
             {currentUserId === comment.user && (
               <>
                 <button onClick={() => setIsEditing(true)} className="hover:text-blue-600 transition-colors uppercase">
-                  {language === 'ta' ? 'திருத்து' : 'Edit'}
+                  Edit
                 </button>
                 <button onClick={() => onDelete(eventId, comment.id)} className="hover:text-red-600 transition-colors uppercase">
-                  {language === 'ta' ? 'நீக்கு' : 'Delete'}
+                  Delete
                 </button>
               </>
             )}
@@ -2622,7 +2526,7 @@ function CommentItem({
                 <textarea
                   value={replyContent}
                   onChange={(e) => setReplyContent(e.target.value)}
-                  placeholder={language === 'ta' ? 'பதில் எழுதுங்கள்...' : 'Write a reply...'}
+                  placeholder="Write a reply..."
                   className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-1 focus:ring-amber-500 focus:bg-white transition-all text-xs resize-none"
                   rows={1}
                 />
@@ -2637,11 +2541,10 @@ function CommentItem({
             </div>
           )}
 
-          {/* Render Replies */}
           {comment.replies && comment.replies.length > 0 && (
             <div className="mt-2 border-l-2 border-gray-50">
               {comment.replies.map(reply => (
-                <CommentItem
+                <EventCommentItem
                   key={reply.id}
                   comment={reply}
                   eventId={eventId}
@@ -2659,3 +2562,30 @@ function CommentItem({
     </div>
   );
 }
+
+// Add custom CSS
+const style = document.createElement('style');
+style.textContent = `
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  @keyframes slide-in {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes scale-in {
+    from { transform: scale(0.95); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+  .animate-slide-in {
+    animation: slide-in 0.3s ease-out forwards;
+  }
+  .animate-scale-in {
+    animation: scale-in 0.2s ease-out forwards;
+  }
+`;
+document.head.appendChild(style);

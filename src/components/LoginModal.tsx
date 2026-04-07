@@ -58,6 +58,33 @@ export default function LoginModal({ isOpen, onClose, onLogin, onNavigate, onSte
       });
 
       if (response.status === 200) {
+        // Check for auto-login
+        if (response.data.can_auto_login && response.data.auto_login_token) {
+          // Auto-login: Exchange auto_login_token for access token
+          try {
+            const tokenResponse = await api.post('/api/auth/auto-login/', {
+              auto_login_token: response.data.auto_login_token,
+              mobile_number: cleanedPhoneNumber,
+            });
+
+            if (tokenResponse.status === 200 && tokenResponse.data.access) {
+              // Store proper access token
+              localStorage.setItem('authToken', tokenResponse.data.access);
+              if (tokenResponse.data.refresh) {
+                localStorage.setItem('refreshToken', tokenResponse.data.refresh);
+              }
+              onLogin();
+              handleClose();
+              onNavigate('profile');
+              return;
+            }
+          } catch (autoLoginError) {
+            // If auto-login fails, fall back to normal OTP flow
+            console.error('Auto-login failed, falling back to OTP:', autoLoginError);
+          }
+        }
+        
+        // Normal OTP flow
         setSuccess(t('otpSuccess'));
         setStep('otp');
         onStepChange?.('otp');
@@ -163,42 +190,40 @@ export default function LoginModal({ isOpen, onClose, onLogin, onNavigate, onSte
 
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-slideUp border border-gray-100">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-250 p-4 animate-in fade-in duration-300">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md mx-auto overflow-hidden animate-slideUp border border-gray-100 max-h-screen">
         {/* Header - Amber gradient to match logo */}
-        <div className="bg-linear-to-r from-amber-600 to-yellow-700 p-6 text-white">
+        <div className="bg-linear-to-r from-amber-600 to-yellow-700 p-4 md:p-6 text-white">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
-              <Shield className="h-8 w-8 mr-3" />
+              <Shield className="h-6 w-6 md:h-8 md:w-8 mr-3" />
               <div>
-                <h2 className="text-2xl font-bold">{t('kodi')} {language === 'ta' ? '(KODI)' : '(Flag)'}</h2>
-                <p className="text-sm opacity-90 mt-1">
-                  {t('loginOtpMessage')}
+                <h2 className="text-xl md:text-2xl font-black uppercase tracking-tight">{t('kodi')}</h2>
+                <p className="text-[10px] md:text-sm opacity-90 font-bold uppercase tracking-widest mt-0.5">
+                  Secure Access
                 </p>
               </div>
             </div>
             <button
               onClick={handleClose}
-              className="p-1 hover:bg-black hover:bg-opacity-20 rounded-full transition-all"
+              className="p-2 hover:bg-black/20 rounded-xl transition-all"
             >
               <X className="h-6 w-6" />
             </button>
           </div>
         </div>
 
-
-
         {/* Body */}
-        <div className="p-6">
-          {/* Information note from PDF */}
-          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+        <div className="p-4 md:p-8">
+          {/* Information note from PDF - Hidden on mobile to save space and prevent scrolling */}
+          <div className="hidden md:block mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
             <div className="flex items-start">
-              <Smartphone className="h-5 w-5 text-amber-600 mr-2 mt-0.5" />
+              <Smartphone className="h-5 w-5 text-amber-600 mr-3 mt-0.5" />
               <div>
-                <p className="text-sm text-amber-800 font-medium mb-1">
+                <p className="text-sm text-amber-800 font-bold mb-1">
                   {t('nonSmartPhoneUser')}
                 </p>
-                <p className="text-xs text-amber-700">
+                <p className="text-[10px] text-amber-700 font-medium">
                   <Globe className="inline h-3 w-3 mr-1" />
                   <strong>WEB ONLY</strong> {t('webOnlyNotice').replace('WEB ONLY', '')}
                 </p>

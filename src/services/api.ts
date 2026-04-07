@@ -2,7 +2,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
 // export const BASE_URL = 'https://kodi-phase2.onrender.com/';
 
-export const BASE_URL = 'http://192.168.1.2:8002/';
+export const BASE_URL = 'http://192.168.1.24:8002/';
 
 
 // Create axios instance
@@ -11,7 +11,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 60000,
+  timeout: 120000, // Increased to 2 minutes
 });
 
 // Request interceptor - Add auth token to requests

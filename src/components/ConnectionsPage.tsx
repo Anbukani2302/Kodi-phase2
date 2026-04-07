@@ -60,9 +60,9 @@ const GenealogyModal: React.FC<GenealogyModalProps> = ({
   };
 
   const getGenderColor = (gender: string) => {
-    if (gender === 'M') return 'from-blue-500 to-indigo-600';
-    if (gender === 'F') return 'from-pink-500 to-rose-600';
-    return 'from-purple-500 to-violet-600';
+    if (gender === 'M') return 'from-amber-600 to-amber-700';
+    if (gender === 'F') return 'from-orange-500 to-orange-600';
+    return 'from-amber-800 to-orange-900';
   };
 
   const getStepIcon = (stepType: string) => {
@@ -95,7 +95,7 @@ const GenealogyModal: React.FC<GenealogyModalProps> = ({
     <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" onClick={onClose}>
       <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200" onClick={e => e.stopPropagation()}>
         {/* Header with gradient */}
-        <div className="sticky top-0 bg-linear-to-r from-amber-500 to-orange-600 p-6 text-white">
+        <div className="sticky top-0 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 p-6 text-white">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-full flex items-center justify-center">
@@ -123,7 +123,7 @@ const GenealogyModal: React.FC<GenealogyModalProps> = ({
           {/* Invitation Card */}
           <div className="bg-linear-to-br from-gray-50 to-gray-100 rounded-xl p-5 border border-gray-200">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-full bg-linear-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
+              <div className="w-14 h-14 rounded-full bg-linear-to-br from-amber-900 via-amber-800 to-orange-900 flex items-center justify-center text-white font-bold text-xl shadow-lg">
                 {invitation?.invited_by?.name?.charAt(0).toUpperCase() || '?'}
               </div>
               <div className="flex-1">
@@ -146,32 +146,31 @@ const GenealogyModal: React.FC<GenealogyModalProps> = ({
                   </span>
                 </div>
               </div>
-              <div className={`px-4 py-2 rounded-full text-sm font-semibold ${
-                invitation?.status === 'accepted' ? 'bg-green-100 text-green-700 border border-green-200' :
+              <div className={`px-4 py-2 rounded-full text-sm font-semibold ${invitation?.status === 'accepted' ? 'bg-green-100 text-green-700 border border-green-200' :
                 invitation?.status === 'pending' ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' :
-                'bg-gray-100 text-gray-700 border border-gray-200'
-              }`}>
+                  'bg-gray-100 text-gray-700 border border-gray-200'
+                }`}>
                 {invitation?.status === 'accepted' ? (language === 'ta' ? 'ஏற்கப்பட்டது' : 'Accepted') :
-                 invitation?.status === 'pending' ? (language === 'ta' ? 'நிலுவையில்' : 'Pending') :
-                 invitation?.status}
+                  invitation?.status === 'pending' ? (language === 'ta' ? 'நிலுவையில்' : 'Pending') :
+                    invitation?.status}
               </div>
             </div>
           </div>
 
           {/* Ultimate Relation Card */}
           {your_relation_to_sender && (
-            <div className="bg-linear-to-br from-purple-50 to-pink-50 rounded-xl p-5 border border-purple-200">
+            <div className="bg-linear-to-br from-amber-50 to-orange-50 rounded-xl p-5 border border-amber-200">
               <div className="flex items-center gap-2 mb-3">
-                <Award className="h-5 w-5 text-purple-600" />
-                <h3 className="font-semibold text-purple-800">
+                <Award className="h-5 w-5 text-orange-600" />
+                <h3 className="font-semibold text-amber-900">
                   {language === 'ta' ? 'இறுதி உறவு' : 'Ultimate Relationship'}
                 </h3>
               </div>
               <div className="flex items-center gap-4">
-                <span className="text-3xl font-bold text-purple-700">
+                <span className="text-3xl font-bold text-amber-900">
                   {your_relation_to_sender.label}
                 </span>
-                <span className="px-3 py-1 bg-purple-200 text-purple-700 rounded-full text-sm font-medium">
+                <span className="px-3 py-1 bg-amber-200 text-amber-900 rounded-full text-sm font-medium">
                   {your_relation_to_sender.code}
                 </span>
               </div>
@@ -196,11 +195,10 @@ const GenealogyModal: React.FC<GenealogyModalProps> = ({
                 {path_visual?.map((step: any, index: number) => (
                   <React.Fragment key={index}>
                     <div className="relative group">
-                      <div className={`w-48 p-4 rounded-xl border-2 transition-all duration-300 group-hover:shadow-lg group-hover:scale-105 ${
-                        step.person.is_current_user ? 'border-green-400 bg-linear-to-br from-green-50 to-emerald-50' :
+                      <div className={`w-48 p-4 rounded-xl border-2 transition-all duration-300 group-hover:shadow-lg group-hover:scale-105 ${step.person.is_current_user ? 'border-green-400 bg-linear-to-br from-green-50 to-emerald-50' :
                         step.person.is_placeholder ? 'border-yellow-400 bg-linear-to-br from-yellow-50 to-amber-50' :
-                        'border-blue-400 bg-linear-to-br from-blue-50 to-indigo-50'
-                      }`}>
+                          'border-amber-400 bg-linear-to-br from-amber-50 to-orange-50'
+                        }`}>
                         <div className="flex items-center gap-3 mb-3">
                           <div className={`w-10 h-10 rounded-full bg-linear-to-br ${getGenderColor(step.person.gender)} flex items-center justify-center text-white font-bold shadow-md`}>
                             {getGenderIcon(step.person.gender)}
@@ -234,11 +232,10 @@ const GenealogyModal: React.FC<GenealogyModalProps> = ({
                   {index < path_visual.length - 1 && (
                     <div className="absolute left-6 top-14 bottom-0 w-0.5 bg-linear-to-b from-orange-400 to-orange-600"></div>
                   )}
-                  <div className={`flex items-start gap-4 p-4 rounded-xl border-2 ${
-                    step.person.is_current_user ? 'border-green-400 bg-linear-to-r from-green-50 to-emerald-50' :
+                  <div className={`flex items-start gap-4 p-4 rounded-xl border-2 ${step.person.is_current_user ? 'border-green-400 bg-linear-to-r from-green-50 to-emerald-50' :
                     step.person.is_placeholder ? 'border-yellow-400 bg-linear-to-r from-yellow-50 to-amber-50' :
-                    'border-blue-400 bg-linear-to-r from-blue-50 to-indigo-50'
-                  }`}>
+                      'border-amber-400 bg-linear-to-r from-amber-50 to-orange-50'
+                    }`}>
                     <div className={`w-12 h-12 rounded-full bg-linear-to-br ${getGenderColor(step.person.gender)} flex items-center justify-center text-white font-bold text-lg shadow-md shrink-0`}>
                       {getGenderIcon(step.person.gender)}
                     </div>
@@ -289,9 +286,9 @@ const GenealogyModal: React.FC<GenealogyModalProps> = ({
                 <div className="bg-white p-3 rounded-lg border border-gray-200">
                   <p className="text-xs text-gray-500 mb-1">{language === 'ta' ? 'பாலினம்' : 'Gender'}</p>
                   <p className="font-semibold text-gray-900">
-                    {invitation.person.gender === 'M' ? '👨 ' + (language === 'ta' ? 'ஆண்' : 'Male') : 
-                     invitation.person.gender === 'F' ? '👩 ' + (language === 'ta' ? 'பெண்' : 'Female') : 
-                     '👤 ' + (language === 'ta' ? 'மற்றவை' : 'Other')}
+                    {invitation.person.gender === 'M' ? '👨 ' + (language === 'ta' ? 'ஆண்' : 'Male') :
+                      invitation.person.gender === 'F' ? '👩 ' + (language === 'ta' ? 'பெண்' : 'Female') :
+                        '👤 ' + (language === 'ta' ? 'மற்றவை' : 'Other')}
                   </p>
                 </div>
                 <div className="bg-white p-3 rounded-lg border border-gray-200">
@@ -300,10 +297,9 @@ const GenealogyModal: React.FC<GenealogyModalProps> = ({
                 </div>
                 <div className="bg-white p-3 rounded-lg border border-gray-200">
                   <p className="text-xs text-gray-500 mb-1">{language === 'ta' ? 'நிலை' : 'Status'}</p>
-                  <p className={`font-semibold ${
-                    invitation.status === 'accepted' ? 'text-green-600' :
+                  <p className={`font-semibold ${invitation.status === 'accepted' ? 'text-green-600' :
                     invitation.status === 'pending' ? 'text-yellow-600' : 'text-gray-600'
-                  }`}>
+                    }`}>
                     {invitation.status}
                   </p>
                 </div>
@@ -728,7 +724,7 @@ export default function ConnectionsPage() {
       {showPersonDetails && selectedPerson && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in" onClick={() => setShowPersonDetails(false)}>
           <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="sticky top-0 bg-linear-to-r from-amber-500 to-orange-600 p-6 text-white">
+            <div className="sticky top-0 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 p-6 text-white">
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-full flex items-center justify-center">
@@ -748,16 +744,16 @@ export default function ConnectionsPage() {
             </div>
             <div className="p-6">
               <div className="flex items-center gap-6 mb-6">
-                <div className="w-24 h-24 rounded-full bg-linear-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white font-bold text-4xl shadow-xl">
+                <div className="w-24 h-24 rounded-full bg-linear-to-br from-amber-900 via-amber-800 to-orange-900 flex items-center justify-center text-white font-bold text-4xl shadow-xl">
                   {connectionService.getAvatarInitial(selectedPerson.full_name || '?')}
                 </div>
                 <div>
                   <h3 className="text-2xl font-bold text-gray-900">{selectedPerson.full_name}</h3>
                   <div className="flex gap-2 mt-2">
-                    <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
-                      {selectedPerson.gender === 'M' ? '👨 ' + (language === 'ta' ? 'ஆண்' : 'Male') : 
-                       selectedPerson.gender === 'F' ? '👩 ' + (language === 'ta' ? 'பெண்' : 'Female') : 
-                       '👤 ' + (language === 'ta' ? 'மற்றவை' : 'Other')}
+                    <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-medium">
+                      {selectedPerson.gender === 'M' ? '👨 ' + (language === 'ta' ? 'ஆண்' : 'Male') :
+                        selectedPerson.gender === 'F' ? '👩 ' + (language === 'ta' ? 'பெண்' : 'Female') :
+                          '👤 ' + (language === 'ta' ? 'மற்றவை' : 'Other')}
                     </span>
                     {selectedPerson.is_current_user && (
                       <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
@@ -842,7 +838,7 @@ export default function ConnectionsPage() {
                     className="p-4 hover:bg-gray-50 cursor-pointer border-b last:border-b-0 flex items-center justify-between transition-colors"
                   >
                     <div className="flex items-center gap-4">
-                      <div className={`w-12 h-12 rounded-full bg-linear-to-br ${result.gender === 'M' ? 'from-blue-500 to-indigo-600' : 'from-pink-500 to-rose-600'} flex items-center justify-center text-white font-bold text-lg shadow-md`}>
+                      <div className={`w-12 h-12 rounded-full bg-linear-to-br ${result.gender === 'M' ? 'from-amber-600 to-amber-700' : 'from-orange-500 to-orange-600'} flex items-center justify-center text-white font-bold text-lg shadow-md`}>
                         {connectionService.getAvatarInitial(result.full_name)}
                       </div>
                       <div>
@@ -855,9 +851,8 @@ export default function ConnectionsPage() {
                         )}
                       </div>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      result.gender === 'M' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'
-                    }`}>
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${result.gender === 'M' ? 'bg-amber-100 text-amber-700' : 'bg-orange-100 text-orange-700'
+                      }`}>
                       {result.gender === 'M' ? '👨' : '👩'} {result.gender === 'M' ? (language === 'ta' ? 'ஆண்' : 'Male') : (language === 'ta' ? 'பெண்' : 'Female')}
                     </span>
                   </div>
@@ -878,20 +873,18 @@ export default function ConnectionsPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex-1 py-4 px-6 font-semibold transition-all duration-300 relative ${
-                  activeTab === tab.id
-                    ? 'text-orange-600 bg-linear-to-b from-orange-50 to-transparent'
-                    : 'text-gray-600 hover:bg-gray-50'
-                }`}
+                className={`flex-1 py-4 px-6 font-semibold transition-all duration-300 relative ${activeTab === tab.id
+                  ? 'text-orange-600 bg-linear-to-b from-orange-50 to-transparent'
+                  : 'text-gray-600 hover:bg-gray-50'
+                  }`}
               >
                 <tab.icon className="h-5 w-5 inline-block mr-2" />
                 {tab.label}
                 {tab.count > 0 && (
-                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
-                    activeTab === tab.id
-                      ? 'bg-orange-100 text-orange-600'
-                      : 'bg-gray-200 text-gray-600'
-                  }`}>
+                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${activeTab === tab.id
+                    ? 'bg-orange-100 text-orange-600'
+                    : 'bg-gray-200 text-gray-600'
+                    }`}>
                     {tab.count}
                   </span>
                 )}
@@ -920,15 +913,13 @@ export default function ConnectionsPage() {
                       <button
                         key={option.value}
                         onClick={() => setInvitationFilter(option.value as any)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${
-                          isActive ? option.activeColor : option.color
-                        }`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${isActive ? option.activeColor : option.color
+                          }`}
                       >
                         <span>{option.icon}</span>
                         <span>{option.label}</span>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                          isActive ? 'bg-white/30' : 'bg-white/50'
-                        }`}>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-white/30' : 'bg-white/50'
+                          }`}>
                           {count}
                         </span>
                       </button>
@@ -958,7 +949,7 @@ export default function ConnectionsPage() {
                           )}
                         </div>
                         <div className="flex gap-3 mt-2">
-                          <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                          <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-medium">
                             {centerPerson.gender === 'M' ? '👨 ' + (language === 'ta' ? 'ஆண்' : 'Male') : '👩 ' + (language === 'ta' ? 'பெண்' : 'Female')}
                           </span>
                           {centerPerson.mobile_number && (
@@ -994,7 +985,7 @@ export default function ConnectionsPage() {
                     >
                       <div className="flex items-center gap-4">
                         <div className="relative">
-                          <div className={`w-14 h-14 rounded-full bg-linear-to-br ${item.person.gender === 'M' ? 'from-blue-500 to-indigo-600' : 'from-pink-500 to-rose-600'} flex items-center justify-center text-white font-bold text-xl shadow-md`}>
+                          <div className={`w-14 h-14 rounded-full bg-linear-to-br ${item.person.gender === 'M' ? 'from-amber-600 to-amber-700' : 'from-orange-500 to-orange-600'} flex items-center justify-center text-white font-bold text-xl shadow-md`}>
                             {connectionService.getAvatarInitial(item.person.full_name)}
                           </div>
                           {item.person.is_placeholder && (
@@ -1055,7 +1046,7 @@ export default function ConnectionsPage() {
                   >
                     <div className="flex items-center gap-4 flex-1 w-full">
                       <div className="relative">
-                        <div className="w-16 h-16 rounded-full bg-linear-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                        <div className="w-16 h-16 rounded-full bg-linear-to-br from-amber-900 via-amber-800 to-orange-900 flex items-center justify-center text-white font-bold text-xl shadow-lg">
                           {invitation.invited_by_name?.charAt(0).toUpperCase() || '?'}
                         </div>
                         {!invitation.is_expired && invitation.status === 'pending' && (
@@ -1068,7 +1059,7 @@ export default function ConnectionsPage() {
                           {getStatusBadge(invitation)}
                         </div>
                         <div className="flex items-center gap-3 mt-2">
-                          <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">
+                          <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-medium">
                             {invitation.person_name}
                           </span>
                           <span className="text-sm text-gray-500">
@@ -1093,7 +1084,7 @@ export default function ConnectionsPage() {
                       <button
                         onClick={() => handleViewGenealogy(invitation.id)}
                         disabled={loadingGenealogy}
-                        className="flex-1 sm:flex-none px-4 py-2.5 bg-linear-to-r from-amber-500 to-orange-500 text-white rounded-lg hover:from-amber-600 hover:to-orange-600 transition-all font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+                        className="flex-1 sm:flex-none px-4 py-2.5 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 text-white rounded-lg hover:from-orange-700 hover:to-amber-700 transition-all font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
                       >
                         {loadingGenealogy ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -1138,35 +1129,31 @@ export default function ConnectionsPage() {
                 {getFilteredInvitations().map((invitation) => (
                   <div
                     key={invitation.id}
-                    className={`relative overflow-hidden rounded-xl transition-all hover:shadow-xl border-2 ${
-                      invitation.status === 'accepted' ? 'border-green-200 bg-linear-to-r from-green-50 to-emerald-50' :
+                    className={`relative overflow-hidden rounded-xl transition-all hover:shadow-xl border-2 ${invitation.status === 'accepted' ? 'border-green-200 bg-linear-to-r from-green-50 to-emerald-50' :
                       invitation.status === 'pending' && !invitation.is_expired ? 'border-yellow-200 bg-linear-to-r from-yellow-50 to-amber-50' :
-                      'border-gray-200 bg-linear-to-r from-gray-50 to-gray-100'
-                    }`}
+                        'border-gray-200 bg-linear-to-r from-gray-50 to-gray-100'
+                      }`}
                   >
-                    <div className={`h-2 w-full absolute top-0 left-0 ${
-                      invitation.status === 'accepted' ? 'bg-green-500' :
+                    <div className={`h-2 w-full absolute top-0 left-0 ${invitation.status === 'accepted' ? 'bg-green-500' :
                       invitation.status === 'pending' && !invitation.is_expired ? 'bg-yellow-500' :
-                      invitation.is_expired ? 'bg-red-500' : 'bg-gray-500'
-                    }`} />
+                        invitation.is_expired ? 'bg-red-500' : 'bg-gray-500'
+                      }`} />
 
                     <div className="p-6">
                       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                         <div className="flex items-start gap-4 flex-1">
                           <div className="relative">
-                            <div className={`w-16 h-16 rounded-2xl bg-linear-to-br ${
-                              invitation.person_gender === 'M' ? 'from-blue-500 to-indigo-600' : 'from-pink-500 to-rose-600'
-                            } flex items-center justify-center text-white font-bold text-2xl shadow-lg`}>
+                            <div className={`w-16 h-16 rounded-2xl bg-linear-to-br ${invitation.person_gender === 'M' ? 'from-amber-600 to-amber-700' : 'from-orange-500 to-orange-600'
+                              } flex items-center justify-center text-white font-bold text-2xl shadow-lg`}>
                               {invitation.person_name?.charAt(0).toUpperCase() || '?'}
                             </div>
-                            <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-4 border-white flex items-center justify-center text-xs ${
-                              invitation.status === 'accepted' ? 'bg-green-500 text-white' :
+                            <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-4 border-white flex items-center justify-center text-xs ${invitation.status === 'accepted' ? 'bg-green-500 text-white' :
                               invitation.status === 'pending' && !invitation.is_expired ? 'bg-yellow-500 text-white' :
-                              invitation.is_expired ? 'bg-red-500 text-white' : 'bg-gray-500 text-white'
-                            }`}>
+                                invitation.is_expired ? 'bg-red-500 text-white' : 'bg-gray-500 text-white'
+                              }`}>
                               {invitation.status === 'accepted' ? '✓' :
-                               invitation.status === 'pending' && !invitation.is_expired ? '⏳' :
-                               invitation.is_expired ? '!' : '✗'}
+                                invitation.status === 'pending' && !invitation.is_expired ? '⏳' :
+                                  invitation.is_expired ? '!' : '✗'}
                             </div>
                           </div>
 
@@ -1221,11 +1208,10 @@ export default function ConnectionsPage() {
                               {language === 'ta' ? 'ரத்து' : 'Cancel'}
                             </button>
                           ) : (
-                            <div className={`w-full px-4 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 border ${
-                              invitation.status === 'cancelled' ? 'bg-gray-100 text-gray-700 border-gray-200' :
+                            <div className={`w-full px-4 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 border ${invitation.status === 'cancelled' ? 'bg-gray-100 text-gray-700 border-gray-200' :
                               invitation.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
-                              invitation.is_expired ? 'bg-red-100 text-red-700 border-red-200' : ''
-                            }`}>
+                                invitation.is_expired ? 'bg-red-100 text-red-700 border-red-200' : ''
+                              }`}>
                               {invitation.status === 'cancelled' && <XCircle className="h-4 w-4" />}
                               {invitation.status === 'rejected' && <UserX className="h-4 w-4" />}
                               {invitation.is_expired && <AlertCircle className="h-4 w-4" />}

@@ -17,6 +17,7 @@ import ConnectedPeople from "./components/ConnectedPeople";
 
 
 import { authService } from "./services/authService";
+import { Toaster } from "react-hot-toast";
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -123,14 +124,14 @@ export default function App() {
             }
           />
 
-<Route
-  path="/connected-people"
-  element={
-    isAuthenticated ? (
-      localStorage.getItem('userRole') === 'admin' ? <Navigate to="/dashboard" /> : <ConnectedPeople />
-    ) : <Navigate to="/" />
-  }
-/>
+          <Route
+            path="/connected-people"
+            element={
+              isAuthenticated ? (
+                localStorage.getItem('userRole') === 'admin' ? <Navigate to="/dashboard" /> : <ConnectedPeople />
+              ) : <Navigate to="/" />
+            }
+          />
 
           <Route
             path="/dashboard"
@@ -153,6 +154,7 @@ export default function App() {
           onNavigate={(page) => navigate(page)}
           onStepChange={(step) => setIsOtpStep(step === 'otp')}
         />
+        <Toaster position="top-right" />
       </div>
     </LanguageProvider>
   );

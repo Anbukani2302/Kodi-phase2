@@ -62,6 +62,7 @@ export interface UpdateNamePayload {
 }
 
 export interface PersonDetailResponse {
+  mobile_number: PersonDetailResponse;
   id: number;
   linked_user: number;
   full_name: string;
@@ -753,6 +754,39 @@ class GenealogyService {
       return response.data;
     } catch (error: any) {
       console.error("Error searching persons:", error);
+      throw error;
+    }
+  }
+
+  async getRelationBetween(person1Id: number, person2Id: number, centerPersonId: number): Promise<any> {
+    console.log(`📡 genealogyService.getRelationBetween: p1=${person1Id}, p2=${person2Id}, center=${centerPersonId}`);
+    try {
+      // Use full URL pattern just in case
+      const response = await api.post('/api/genealogy/relation-between/', {
+        person1_id: Number(person1Id),
+        person2_id: Number(person2Id),
+        center_person_id: Number(centerPersonId)
+      });
+      console.log("📥 API raw response:", response);
+      return response.data;
+    } catch (error: any) {
+      console.error("🔴 API call error in getRelationBetween:", error);
+      if (error.response) {
+        console.error("🔴 Error response data:", error.response.data);
+        console.error("🔴 Error response status:", error.response.status);
+      }
+      throw error;
+    }
+  }
+
+  async getConnectedPersons(personId: number, maxDepth: number = 1): Promise<any> {
+    console.log(`API Call - getConnectedPersons for person ${personId} with max_depth ${maxDepth}`);
+    try {
+      const response = await api.get(`/api/genealogy/persons/${personId}/connected/?person_id=${personId}&max_depth=${maxDepth}`);
+      console.log("Connected persons response:", response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("Error fetching connected persons:", error);
       throw error;
     }
   }

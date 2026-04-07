@@ -277,6 +277,53 @@ const translations: Translations = {
   placeholderNote: { ta: 'இது ஒரு மாதிரி நபர். இவருக்கு உறவினர்களைச் சேர்ப்பதன் மூலம் குடும்ப மரத்தை உருவாக்கலாம்.', en: 'This is a placeholder person. Add relatives to build their family tree.' },
   readyToAddNote: { ta: 'குடும்ப உறுப்பினர்களைச் சேர்க்கத் தயார்', en: 'Ready to add family members' },
   loadingOptions: { ta: 'விருப்பங்கள் ஏற்றப்படுகின்றன...', en: 'Loading options...' },
+
+  // ConnectedPeople translations
+  connectedPeoples: { ta: 'இணைக்கப்பட்ட உறவுகள்', en: 'Connected People' },
+  manageConnectionsSub: { ta: 'உங்கள் குடும்ப தொடர்புகள் மற்றும் அழைப்புகளை தொழில்முறை ரீதியாக நிர்வகிக்கவும்', en: 'Manage your family connections and invitations professionally' },
+  connectionError: { ta: 'இணைப்பு பிழை', en: 'Connection Error' },
+  noRelativesYet: { ta: 'இன்னும் உறவினர்கள் இல்லை', en: 'No Relatives Yet' },
+  startAddingFirst: { ta: 'உங்கள் குடும்ப மரம் வளர காத்திருக்கிறது! அவற்றைப் பார்க்க உங்கள் முதல் உறவினரைச் சேர்ப்பதன் மூலம் தொடங்கவும்.', en: 'Your family tree is waiting to grow! Start by adding your first relative to see them here.' },
+  viewDetails: { ta: 'விவரங்களைக் காண்க', en: 'View Details' },
+  recipientMobileNumber: { ta: 'பெறுநரின் கைபேசி எண்', en: 'Recipient Mobile Number' },
+  processing: { ta: 'செயலாக்கப்படுகிறது...', en: 'Processing...' },
+  sendSecureInvitation: { ta: 'பாதுகாப்பான அழைப்பை அனுப்பு', en: 'Send Secure Invitation' },
+  goBack: { ta: 'பின்செல்', en: 'Go Back' },
+  invitationSuccess: { ta: 'அழைப்பு வெற்றிகரமாக அனுப்பப்பட்டது', en: 'Invitation success' },
+  validTenDigitError: { ta: 'சரியான 10 இலக்க கைபேசி எண்ணை உள்ளிடவும்', en: 'Please enter a valid 10-digit mobile number' },
+  validPrefixError: { ta: '6-9 இல் தொடங்கும் சரியான கைபேசி எண்ணை உள்ளிடவும்', en: 'Please enter a valid mobile number starting with 6-9' },
+  invitationNote: { ta: 'இந்த எண்ணிற்கு ஒரு அழைப்பு இணைப்பு அனுப்பப்படும்', en: 'An invitation link will be sent to this number' },
+  connectedLabel: { ta: 'இணைக்கப்பட்டுள்ளது', en: 'connected' },
+  totalLabel: { ta: 'மொத்தம்', en: 'total' },
+  reconnect: { ta: 'மீண்டும் இணைக்கவும்', en: 'Try Reconnecting' },
+  memberNetworkAccess: { ta: 'உறுப்பினர் இணைய அணுகல்', en: 'Member Network Access' },
+  noRelativesFound: { ta: 'உறவினர்கள் யாரும் காணப்படவில்லை', en: 'No relatives found' },
+  startAddingPeople: { ta: 'அவற்றைப் பார்க்க இந்த வகையிலான நபர்களைச் சேர்க்கத் தொடங்கவும்.', en: 'Start adding people to this category to see them here.' },
+  connectedStatus: { ta: 'இணைக்கப்பட்டுள்ளது', en: 'Connected' },
+  pendingStatus: { ta: 'நிலுவையில்', en: 'Pending' },
+  tenDigitPlaceholder: { ta: 'பத்து இலக்க கைபேசி எண்', en: 'Ten-digit mobile number' },
+  inviteBtn: { ta: 'அழைப்பு', en: 'Invite' },
+
+  // Kinship Codes
+  FATHER: { ta: 'தந்தை', en: 'Father' },
+  MOTHER: { ta: 'தாய்', en: 'Mother' },
+  ELDER_BROTHER: { ta: 'அண்ணன்', en: 'Elder Brother' },
+  ELDER_SISTER: { ta: 'அக்காள்', en: 'Elder Sister' },
+  YOUNGER_BROTHER: { ta: 'தம்பி', en: 'Younger Brother' },
+  YOUNGER_SISTER: { ta: 'தங்கை', en: 'Younger Sister' },
+  SON: { ta: 'மகன்', en: 'Son' },
+  DAUGHTER: { ta: 'மகள்', en: 'Daughter' },
+  HUSBAND: { ta: 'கணவர்', en: 'Husband' },
+  WIFE: { ta: 'மனைவி', en: 'Wife' },
+  ASHRAMAM: { ta: 'ஆசிரமம்', en: 'Ashramam' },
+  BROTHER: { ta: 'சகோதரர்', en: 'Brother' },
+  SISTER: { ta: 'சகோதரி', en: 'Sister' },
+
+  // Category Codes
+  primary_line: { ta: 'முதன்மை வழி', en: 'Primary Line' },
+  secondary_line: { ta: 'இரண்டாம் வழி', en: 'Secondary Line' },
+  extended_line: { ta: 'விரிவாக்கப்பட்ட வழி', en: 'Extended Line' },
+  immediate_family: { ta: 'உடனடி குடும்பம்', en: 'Immediate Family' },
 };
 
 interface LanguageContextType {

@@ -216,16 +216,16 @@ export default function Navbar({
                       <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-amber-100 py-2 z-102 animate-fadeIn">
                         <button
                           onClick={() => {
-                            navigate("/one-to-connect");
+                            navigate("/genealogy", { state: { mode: 'two-way' } });
                             setIsServicesOpen(false);
                           }}
                           className="w-full flex items-center space-x-3 px-4 py-2.5 text-left text-gray-700 hover:bg-linear-to-r hover:from-amber-50 hover:to-orange-50 hover:text-amber-800 transition-colors"
                         >
                           <Users2 className="h-4 w-4 text-amber-600" />
                           <span className="text-sm font-medium">
-  {language === 'en' ? 'Create Two-Way Relation' : 'உறவு இணை'}
-</span>                        </button>
-                        
+                            {language === 'en' ? 'Create Two-Way Relation' : 'உறவு இணை'}
+                          </span>                        </button>
+
                         {/* New Connected People Option */}
                         <button
                           onClick={() => {
@@ -358,7 +358,7 @@ export default function Navbar({
                       onClick={() => navigate("/profile")}
                     />
 
-                   
+
                   </>
                 ) : (
                   <>
@@ -385,10 +385,10 @@ export default function Navbar({
                   {!isAdmin ? (
                     <div className="grid grid-cols-1 gap-1">
                       <MobileNavBtn
-                        label="One to Connect"
+                        label={language === 'en' ? 'Create Two-Way Relation' : 'உறவு இணை'}
                         icon={<Users2 size={18} />}
-                        onClick={() => { navigate("/one-to-connect"); }}
-                        active={isActive("/one-to-connect")}
+                        onClick={() => { navigate("/genealogy", { state: { mode: 'two-way' } }); }}
+                        active={isActive("/genealogy") && location.state?.mode === 'two-way'}
                       />
                       <MobileNavBtn
                         label={language === 'ta' ? 'இணைக்கப்பட்ட மக்கள்' : 'Connected People'}

@@ -31,6 +31,19 @@ export default function HomePage() {
     }
   };
 
+  const fetchAndUpdatePost = async (postId: number) => {
+    try {
+      const updatedPost = await postService.getPost(postId);
+      if (updatedPost) {
+        setPosts(currentPosts => currentPosts.map(post =>
+          post.id === postId ? updatedPost : post
+        ));
+      }
+    } catch (error) {
+      console.error('Failed to refresh updated post:', error);
+    }
+  };
+
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -49,10 +62,17 @@ export default function HomePage() {
 
     try {
       setPosting(true);
-      await postService.createPost({
-        content: postContent,
-        image: selectedImage,
-      });
+      const formData = new FormData();
+      formData.append('content', postContent);
+      formData.append('visibility', 'connections');
+
+      if (selectedImage) {
+        formData.append('media', selectedImage);
+        // Map an empty string by default to satisfy backend media_captions requirements
+        formData.append('media_captions', '');
+      }
+
+      await postService.createPost(formData);
 
       setPostContent('');
       setSelectedImage(null);
@@ -73,7 +93,7 @@ export default function HomePage() {
       } else {
         await postService.likePost(postId);
       }
-      loadPosts();
+      fetchAndUpdatePost(postId);
     } catch (error) {
       console.error('Failed to like post:', error);
     }
@@ -86,7 +106,7 @@ export default function HomePage() {
     try {
       await postService.createComment(postId, content);
       setCommentInputs({ ...commentInputs, [postId]: '' });
-      loadPosts();
+      fetchAndUpdatePost(postId);
     } catch (error) {
       console.error('Failed to comment:', error);
     }
@@ -95,7 +115,7 @@ export default function HomePage() {
   const handleShare = async (postId: number) => {
     try {
       await postService.sharePost(postId);
-      loadPosts();
+      fetchAndUpdatePost(postId);
     } catch (error) {
       console.error('Failed to share post:', error);
     }
@@ -228,8 +248,8 @@ export default function HomePage() {
                 <button
                   onClick={() => handleLike(post.id)}
                   className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${post.is_liked
-                      ? 'text-red-600 bg-red-50'
-                      : 'text-gray-600 hover:bg-gray-100'
+                    ? 'text-red-600 bg-red-50'
+                    : 'text-gray-600 hover:bg-gray-100'
                     }`}
                 >
                   <Heart className={`h-5 w-5 ${post.is_liked ? 'fill-current' : ''}`} />
