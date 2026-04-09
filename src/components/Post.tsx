@@ -241,7 +241,7 @@ export default function Post({
   const handleReport = async () => {
     if (!reportReason) return;
     try {
-      await postService.reportPost(post.id, reportReason, reportDescription);
+      await postService.reportPost(post.id, reportReason.toLowerCase(), reportDescription);
       setShowReportModal(false);
       setReportReason('');
       setReportDescription('');
@@ -453,7 +453,7 @@ export default function Post({
 
             {post.media[mediaPreviewIndex]?.media_type === 'image' ? (
               <img
-                src={getFullImageUrl(post.media[mediaPreviewIndex].file)}
+                src={post.media ? getFullImageUrl(post.media[mediaPreviewIndex].file) : ''}
                 alt="Preview"
                 className="max-w-full max-h-[90vh] object-contain"
               />
@@ -672,9 +672,8 @@ export default function Post({
                 >
                   <option value="">Select a reason</option>
                   <option value="SPAM">Spam</option>
-                  <option value="INAPPROPRIATE">Inappropriate content</option>
+                  <option value="INAPPROPRIATE">Inappropriate</option>
                   <option value="HARASSMENT">Harassment</option>
-                  <option value="HATE_SPEECH">Hate speech</option>
                   <option value="VIOLENCE">Violence</option>
                   <option value="COPYRIGHT">Copyright violation</option>
                   <option value="OTHER">Other</option>

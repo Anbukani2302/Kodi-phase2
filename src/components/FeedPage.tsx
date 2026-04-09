@@ -1,4 +1,4 @@
-// FeedPage.tsx (updated)
+// FeedPage.tsx (updated with TypeScript fixes)
 import React, { useState, useEffect, useCallback, ReactNode } from 'react';
 import {
   Calendar,
@@ -41,11 +41,10 @@ import { postService, Post as PostType } from '../services/postService';
 import { eventService, Event, EventType, RSVPData, eventHelpers } from '../services/eventService';
 import { authService, UserProfile } from '../services/authService';
 import { BASE_URL } from '../services/api';
-import Post from '../components/Post';
+import PostComponent from '../components/Post';
 
 // Interfaces
 interface RSVPGuest {
-  notes: ReactNode;
   id: number;
   user: {
     id: number;
@@ -55,10 +54,17 @@ interface RSVPGuest {
   status: 'GOING' | 'MAYBE' | 'NOT_GOING';
   guests_count?: number;
   created_at: string;
+  notes?: ReactNode;
+  // Additional properties that may come from API
+  response?: 'GOING' | 'MAYBE' | 'NOT_GOING';
+  user_full_name?: string;
+  full_name?: string;
+  user_name?: string;
+  guest_names?: string;
+  dietary_restrictions?: string;
 }
 
 interface EventComment {
-  user_name: any;
   id: number;
   event: number;
   user: {
@@ -70,6 +76,7 @@ interface EventComment {
   created_at: string;
   parent?: number;
   replies?: EventComment[];
+  user_name?: string;
 }
 
 export default function FeedPage() {
@@ -203,7 +210,7 @@ export default function FeedPage() {
 
       if (postFilter === 'myposts' && currentUserIdNum) {
         // Get current user's posts - hits /api/posts/user/YOUR_USER_ID/?page=1&page_size=20
-        response = await postService.getUserPosts(currentUserIdNum);
+        response = await postService.getUserPosts(currentUserIdNum as number);
       } else {
         // Get all posts feed
         response = await postService.getPosts();
@@ -604,7 +611,6 @@ export default function FeedPage() {
 
         await eventService.createEvent(formData);
 
-        const selectedType = eventTypes.find(t => t.id === eventType);
         setSuccessMessage(`✨ "${eventTitle}" event created successfully!`);
         setShowSuccessMessage(true);
         setTimeout(() => setShowSuccessMessage(false), 3000);
@@ -734,7 +740,7 @@ export default function FeedPage() {
     setTimeout(() => setShowSuccessMessage(false), 3000);
   };
 
-  const handlePostUpdated = (updatedPost: Post) => {
+  const handlePostUpdated = (updatedPost: PostType) => {
     setPosts(posts.map(post =>
       post.id === updatedPost.id ? updatedPost : post
     ));
@@ -1308,60 +1314,69 @@ export default function FeedPage() {
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {guests.map((guest) => (
-                          <div
-                            key={guest.id}
-                            className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-lg transition-all duration-200 hover:scale-[1.02] group"
-                          >
-                            <div className="flex items-start space-x-3">
-                              <div className={`relative ${guest.response === 'GOING' ? 'bg-linear-to-br from-green-400 to-green-600' :
-                                guest.response === 'MAYBE' ? 'bg-linear-to-br from-yellow-400 to-yellow-600' :
-                                  'bg-linear-to-br from-red-400 to-red-600'
-                                } p-3 rounded-xl text-white shadow-md`}>
-                                <User className="h-5 w-5" />
-                              </div>
-                              <div className="flex-1">
-                                <div className="flex items-start justify-between">
-                                  <div>
-                                    <h4 className="font-semibold text-gray-900 group-hover:text-amber-600 transition-colors">
-                                      {guest.user_full_name || guest.full_name || guest.user_name}
-                                    </h4>
-                                    <p className="text-xs text-gray-500">{guest.user_name}</p>
-                                  </div>
-                                  <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getResponseColor(guest.response)}`}>
-                                    {guest.response}
-                                  </span>
+                        {guests.map((guest) => {
+                          // Use either status or response property
+                          const guestResponse = guest.status || guest.response || 'NOT_GOING';
+                          // Use available name properties
+                          const displayName = guest.user_full_name || guest.full_name || guest.user_name || 
+                            (guest.user?.full_name) || 'Anonymous';
+                          const username = guest.user_name || (guest.user?.full_name) || '';
+                          
+                          return (
+                            <div
+                              key={guest.id}
+                              className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-lg transition-all duration-200 hover:scale-[1.02] group"
+                            >
+                              <div className="flex items-start space-x-3">
+                                <div className={`relative ${guestResponse === 'GOING' ? 'bg-linear-to-br from-green-400 to-green-600' :
+                                  guestResponse === 'MAYBE' ? 'bg-linear-to-br from-yellow-400 to-yellow-600' :
+                                    'bg-linear-to-br from-red-400 to-red-600'
+                                  } p-3 rounded-xl text-white shadow-md`}>
+                                  <User className="h-5 w-5" />
                                 </div>
+                                <div className="flex-1">
+                                  <div className="flex items-start justify-between">
+                                    <div>
+                                      <h4 className="font-semibold text-gray-900 group-hover:text-amber-600 transition-colors">
+                                        {displayName}
+                                      </h4>
+                                      <p className="text-xs text-gray-500">{username}</p>
+                                    </div>
+                                    <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getResponseColor(guestResponse)}`}>
+                                      {guestResponse}
+                                    </span>
+                                  </div>
 
-                                {guest.guests_count > 0 && (
-                                  <div className="mt-2 p-2 bg-amber-50 rounded-lg border border-amber-100">
-                                    <p className="text-xs font-medium text-amber-700 mb-1">Plus {guest.guests_count} guest{guest.guests_count > 1 ? 's' : ''}</p>
-                                    {guest.guest_names && (
-                                      <p className="text-xs text-gray-600 flex items-center">
-                                        <Users className="h-3 w-3 mr-1 text-amber-500" />
-                                        {guest.guest_names}
+                                  {(guest.guests_count ?? 0) > 0 && (
+                                    <div className="mt-2 p-2 bg-amber-50 rounded-lg border border-amber-100">
+                                      <p className="text-xs font-medium text-amber-700 mb-1">Plus {guest.guests_count} guest{(guest.guests_count ?? 0) > 1 ? 's' : ''}</p>
+                                      {guest.guest_names && (
+                                        <p className="text-xs text-gray-600 flex items-center">
+                                          <Users className="h-3 w-3 mr-1 text-amber-500" />
+                                          {guest.guest_names}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  <div className="mt-2 space-y-1">
+                                    {guest.dietary_restrictions && (
+                                      <p className="text-xs text-orange-600 flex items-center">
+                                        <Coffee className="h-3 w-3 mr-1" />
+                                        {guest.dietary_restrictions}
+                                      </p>
+                                    )}
+                                    {guest.notes && (
+                                      <p className="text-xs text-gray-500 italic bg-gray-50 p-2 rounded-lg">
+                                        "{typeof guest.notes === 'string' ? guest.notes : ''}"
                                       </p>
                                     )}
                                   </div>
-                                )}
-
-                                <div className="mt-2 space-y-1">
-                                  {guest.dietary_restrictions && (
-                                    <p className="text-xs text-orange-600 flex items-center">
-                                      <Coffee className="h-3 w-3 mr-1" />
-                                      {guest.dietary_restrictions}
-                                    </p>
-                                  )}
-                                  {guest.notes && (
-                                    <p className="text-xs text-gray-500 italic bg-gray-50 p-2 rounded-lg">
-                                      "{guest.notes}"
-                                    </p>
-                                  )}
                                 </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1414,12 +1429,11 @@ export default function FeedPage() {
                         className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500"
                         required
                       >
-                        <option value="INAPPROPRIATE">Inappropriate content</option>
-                        <option value="SPAM">Spam</option>
-                        <option value="WRONG_VISIBILITY">Wrong visibility settings</option>
-                        <option value="HARASSMENT">Harassment</option>
-                        <option value="FAKE">Fake event</option>
-                        <option value="OTHER">Other</option>
+                        <option value="inappropriate">Inappropriate</option>
+                        <option value="spam">Spam</option>
+                        <option value="harassment">Harassment</option>
+                        <option value="fake">Fake</option>
+                        <option value="other">Other</option>
                       </select>
                     </div>
 
@@ -1546,7 +1560,6 @@ export default function FeedPage() {
                     >
                       <option value="public">🌍 Public</option>
                       <option value="connections">👥 Connections</option>
-                      {/* <option value="custom">🔒 Custom</option> */}
                     </select>
                   </div>
 
@@ -1564,7 +1577,7 @@ export default function FeedPage() {
                         <Camera className="h-5 w-5" />
                         <span className="text-sm font-medium">Photos</span>
                       </button>
-                      <button
+                      {/* <button
                         type="button"
                         onClick={() => setActiveMediaTab('videos')}
                         className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${activeMediaTab === 'videos'
@@ -1574,7 +1587,7 @@ export default function FeedPage() {
                       >
                         <Video className="h-5 w-5" />
                         <span className="text-sm font-medium">Videos</span>
-                      </button>
+                      </button> */}
                     </div>
 
                     <div className="mt-4">
@@ -1981,7 +1994,7 @@ export default function FeedPage() {
               ) : (
                 <div className="space-y-6">
                   {posts.map((post) => (
-                    <Post
+                    <PostComponent
                       key={post.id}
                       post={post}
                       onLike={handlePostLike}
@@ -2447,7 +2460,7 @@ function EventCommentItem({
   onReply: (eventId: number, commentId: number, content: string) => void;
   onEdit: (eventId: number, commentId: number, content: string) => void;
   onDelete: (eventId: number, commentId: number) => void;
-  currentUserId: number | null;
+  currentUserId: number | string | null | undefined;
   isReply?: boolean;
 }) {
   const { language } = useLanguage();
@@ -2467,17 +2480,24 @@ function EventCommentItem({
     setReplyContent('');
   };
 
+  // Check if current user is the comment author
+  const isCommentAuthor = currentUserId === comment.user?.id;
+
   return (
     <div className={`group ${isReply ? 'ml-10 mt-2' : 'mb-4'}`}>
       <div className="flex items-start space-x-2">
         <div className={`${isReply ? 'w-8 h-8' : 'w-10 h-10'} bg-linear-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center shadow-xs shrink-0`}>
           <span className="text-gray-600 font-bold text-xs">
-            {comment.user_name?.charAt(0).toUpperCase() || <User className="h-4 w-4" />}
+            {comment.user?.full_name?.charAt(0).toUpperCase() || 
+             comment.user_name?.charAt(0).toUpperCase() || 
+             <User className="h-4 w-4" />}
           </span>
         </div>
         <div className="flex-1 max-w-full overflow-hidden">
           <div className="bg-white border border-gray-100 rounded-2xl px-4 py-2 shadow-xs group-hover:border-amber-100 transition-colors">
-            <h5 className="font-bold text-gray-900 text-xs mb-0.5">{comment.user_name}</h5>
+            <h5 className="font-bold text-gray-900 text-xs mb-0.5">
+              {comment.user?.full_name || comment.user_name || 'Anonymous'}
+            </h5>
             {isEditing ? (
               <div className="mt-2">
                 <textarea
@@ -2505,7 +2525,7 @@ function EventCommentItem({
             <button onClick={() => setIsReplying(!isReplying)} className="hover:text-amber-600 transition-colors uppercase">
               Reply
             </button>
-            {currentUserId === comment.user && (
+            {isCommentAuthor && (
               <>
                 <button onClick={() => setIsEditing(true)} className="hover:text-blue-600 transition-colors uppercase">
                   Edit
