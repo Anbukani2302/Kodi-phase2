@@ -110,7 +110,7 @@ export default defineConfig({
       },
     },
 
-    // ✅ Optional: increase warning limit (no red warning)
+    //  Optional: increase warning limit (no red warning)
     chunkSizeWarningLimit: 1500,
   },
 
