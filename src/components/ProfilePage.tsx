@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   User,
   Loader2,
@@ -21,12 +21,12 @@ import {
   Lock,
   Eye,
   Sparkles,
-  ChevronDown
-} from 'lucide-react';
-import { authService, UserProfile } from '../services/authService';
-import { useLanguage } from '../contexts/LanguageContext';
-import debounce from 'lodash/debounce';
-import api, { BASE_URL } from '../services/api';
+  ChevronDown,
+} from "lucide-react";
+import { authService, UserProfile } from "../services/authService";
+import { useLanguage } from "../contexts/LanguageContext";
+import debounce from "lodash/debounce";
+import api, { BASE_URL } from "../services/api";
 
 interface ProfilePageProps {
   onNavigate?: (page: string) => void;
@@ -43,34 +43,41 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
   const { language, setLanguage, t } = useLanguage();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<Partial<UserProfile>>({
-    preferred_language: language || 'en' // Default to current language or 'en'
+    preferred_language: language || "en", // Default to current language or 'en'
   });
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
-  const [mobileError, setMobileError] = useState('');
+  const [mobileError, setMobileError] = useState("");
   const [gettingLocation, setGettingLocation] = useState(false);
   const [activeSection, setActiveSection] = useState<string | null>(null);
 
   // Suggestion states
   const [familySuggestions, setFamilySuggestions] = useState<Suggestion[]>([]);
-  const [cultureSuggestions, setCultureSuggestions] = useState<Suggestion[]>([]);
-  const [religionSuggestions, setReligionSuggestions] = useState<Suggestion[]>([]);
-  const [activeSuggestionField, setActiveSuggestionField] = useState<string | null>(null);
+  const [cultureSuggestions, setCultureSuggestions] = useState<Suggestion[]>(
+    []
+  );
+  const [religionSuggestions, setreligionSuggestions] = useState<Suggestion[]>(
+    []
+  );
+  const [activeSuggestionField, setActiveSuggestionField] = useState<
+    string | null
+  >(null);
 
   const [openInfo, setOpenInfo] = useState<{
     family: boolean;
-    lifestyle: boolean;
+    religion: boolean;
     culture: boolean;
   }>({
     family: false,
-    lifestyle: false,
-    culture: false
+    religion: false,
+    culture: false,
   });
 
   // Mother tongue dropdown state
-  const [showMotherTongueDropdown, setShowMotherTongueDropdown] = useState(false);
+  const [showMotherTongueDropdown, setShowMotherTongueDropdown] =
+    useState(false);
 
   // Refs for scrolling to errors
   const firstnameRef = useRef<HTMLInputElement>(null);
@@ -79,13 +86,13 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
   const languageRef = useRef<HTMLDivElement>(null);
 
   const familyInfoText =
-    'கொடிவழி வரைபடத்தில் தங்களுக்கான உறவுமுறை பெயர்களையும், கலாச்சார பெட்டகத்தில் தங்களது உறவுமுறைகளின் கடமைகள், உரிமைகள் பற்றிய விவரங்களையும் துல்லியமாக பெறலாம்.';
+    "கொடிவழி வரைபடத்தில் தங்களுக்கான உறவுமுறை பெயர்களையும், கலாச்சார பெட்டகத்தில் தங்களது உறவுமுறைகளின் கடமைகள், உரிமைகள் பற்றிய விவரங்களையும் துல்லியமாக பெறலாம்.";
 
-  const lifestyleInfoText =
-    'கொடிவழி வரைபடத்தில் தங்களுக்கான உறவுமுறை பெயர்களையும், கலாச்சார பெட்டகத்தில் தங்களது உறவுமுறைகளின் கடமைகள், உரிமைகள் பற்றிய விவரங்களையும் துல்லியமாக பெறலாம்.';
+  const religionInfoText =
+    "கொடிவழி வரைபடத்தில் தங்களுக்கான உறவுமுறை பெயர்களையும், கலாச்சார பெட்டகத்தில் தங்களது உறவுமுறைகளின் கடமைகள், உரிமைகள் பற்றிய விவரங்களையும் துல்லியமாக பெறலாம்.";
 
   const cultureInfoText =
-    'கொடிவழி வரைபடத்தில் தங்களுக்கான உறவுமுறை பெயர்களையும், கலாச்சார பெட்டகத்தில் தங்களது உறவுமுறைகளின் கடமைகள், உரிமைகள் பற்றிய விவரங்களையும் துல்லியமாக பெறலாம்.';
+    "கொடிவழி வரைபடத்தில் தங்களுக்கான உறவுமுறை பெயர்களையும், கலாச்சார பெட்டகத்தில் தங்களது உறவுமுறைகளின் கடமைகள், உரிமைகள் பற்றிய விவரங்களையும் துல்லியமாக பெறலாம்.";
 
   useEffect(() => {
     loadProfile();
@@ -94,28 +101,31 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
   // Close mother tongue dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (languageRef.current && !languageRef.current.contains(event.target as Node)) {
+      if (
+        languageRef.current &&
+        !languageRef.current.contains(event.target as Node)
+      ) {
         setShowMotherTongueDropdown(false);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const loadProfile = async () => {
     try {
       setInitialLoading(true);
-      setError('');
+      setError("");
       const response = await authService.getMyProfile();
       setProfile({
         ...response,
-        preferred_language: response?.preferred_language || language || 'en'
+        preferred_language: response?.preferred_language || language || "en",
       });
     } catch (err: unknown) {
       const error = err as Error;
-      setError(error.message || t('profileLoadError'));
-      console.error('Failed to load profile:', err);
+      setError(error.message || t("profileLoadError"));
+      console.error("Failed to load profile:", err);
     } finally {
       setInitialLoading(false);
     }
@@ -123,18 +133,20 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
 
   // Mobile number validation function
   const validateMobileNumber = (number: string): boolean => {
-    const cleaned = number.replace(/\D/g, '');
+    const cleaned = number.replace(/\D/g, "");
     if (cleaned.length !== 10) return false;
-    const validPrefixes = ['6', '7', '8', '9'];
+    const validPrefixes = ["6", "7", "8", "9"];
     return validPrefixes.includes(cleaned.charAt(0));
   };
 
   // Get current location
   const getCurrentLocation = () => {
     if (!navigator.geolocation) {
-      setError(language === 'ta'
-        ? 'உங்கள் உலாவி இருப்பிட சேவையை ஆதரிக்கவில்லை'
-        : 'Your browser does not support location services');
+      setError(
+        language === "ta"
+          ? "உங்கள் உலாவி இருப்பிட சேவையை ஆதரிக்கவில்லை"
+          : "Your browser does not support location services"
+      );
       return;
     }
 
@@ -150,161 +162,203 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
           const data = await response.json();
 
           const address = data.address;
-          const city = address.city || address.town || address.village || address.suburb || '';
+          const city =
+            address.city ||
+            address.town ||
+            address.village ||
+            address.suburb ||
+            "";
 
           if (city) {
-            setProfile(prev => ({ ...prev, present_city: city }));
+            setProfile((prev) => ({ ...prev, present_city: city }));
             // Show success animation
-            setSuccess(language === 'ta'
-              ? 'இருப்பிடம் வெற்றிகரமாக பெறப்பட்டது!'
-              : 'Location fetched successfully!');
-            setTimeout(() => setSuccess(''), 3000);
+            setSuccess(
+              language === "ta"
+                ? "இருப்பிடம் வெற்றிகரமாக பெறப்பட்டது!"
+                : "Location fetched successfully!"
+            );
+            setTimeout(() => setSuccess(""), 3000);
           } else {
-            setError(language === 'ta'
-              ? 'நகரத்தின் பெயரைக் கண்டுபிடிக்க முடியவில்லை'
-              : 'Could not find city name');
+            setError(
+              language === "ta"
+                ? "நகரத்தின் பெயரைக் கண்டுபிடிக்க முடியவில்லை"
+                : "Could not find city name"
+            );
           }
         } catch (error) {
-          console.error('Reverse geocoding failed:', error);
-          setError(language === 'ta'
-            ? 'இருப்பிடத்தை மாற்ற முடியவில்லை'
-            : 'Could not reverse geocode location');
+          console.error("Reverse geocoding failed:", error);
+          setError(
+            language === "ta"
+              ? "இருப்பிடத்தை மாற்ற முடியவில்லை"
+              : "Could not reverse geocode location"
+          );
         } finally {
           setGettingLocation(false);
         }
       },
       (error) => {
-        console.error('Geolocation error:', error);
+        console.error("Geolocation error:", error);
         setGettingLocation(false);
         switch (error.code) {
           case error.PERMISSION_DENIED:
-            setError(language === 'ta'
-              ? 'இருப்பிட அனுமதி மறுக்கப்பட்டது'
-              : 'Location permission denied');
+            setError(
+              language === "ta"
+                ? "இருப்பிட அனுமதி மறுக்கப்பட்டது"
+                : "Location permission denied"
+            );
             break;
           case error.POSITION_UNAVAILABLE:
-            setError(language === 'ta'
-              ? 'இருப்பிடம் கிடைக்கவில்லை'
-              : 'Location information unavailable');
+            setError(
+              language === "ta"
+                ? "இருப்பிடம் கிடைக்கவில்லை"
+                : "Location information unavailable"
+            );
             break;
           case error.TIMEOUT:
-            setError(language === 'ta'
-              ? 'இருப்பிட கோரிக்கை காலாவதியானது'
-              : 'Location request timed out');
+            setError(
+              language === "ta"
+                ? "இருப்பிட கோரிக்கை காலாவதியானது"
+                : "Location request timed out"
+            );
             break;
           default:
-            setError(language === 'ta'
-              ? 'இருப்பிடத்தைப் பெற முடியவில்லை'
-              : 'Could not get location');
+            setError(
+              language === "ta"
+                ? "இருப்பிடத்தைப் பெற முடியவில்லை"
+                : "Could not get location"
+            );
         }
       },
       {
         enableHighAccuracy: true,
         timeout: 10000,
-        maximumAge: 0
+        maximumAge: 0,
       }
     );
   };
 
   // Debounced suggestion fetcher
-  const fetchSuggestions = debounce(async (field: string, query: string, type: 'family' | 'culture' | 'religion') => {
-    if (!query || query.length < 2) {
-      if (type === 'family') setFamilySuggestions([]);
-      else if (type === 'culture') setCultureSuggestions([]);
-      else if (type === 'religion') setReligionSuggestions([]);
-      return;
-    }
-
-    try {
-      let endpoint = '';
-      if (type === 'family') {
-        endpoint = `/api/admin/auto-suggest/user/user_families/?q=${encodeURIComponent(query)}`;
-      } else if (type === 'culture') {
-        endpoint = `api/admin/auto-suggest/user/user_castes/?q=${encodeURIComponent(query)}`;
-      } else if (type === 'religion') {
-        endpoint = `api/admin/auto-suggest/user/user_religions/?q=${encodeURIComponent(query)}`;
+  const fetchSuggestions = debounce(
+    async (
+      field: string,
+      query: string,
+      type: "family" | "culture" | "religion"
+    ) => {
+      if (!query || query.length < 2) {
+        if (type === "family") setFamilySuggestions([]);
+        else if (type === "culture") setCultureSuggestions([]);
+        else if (type === "religion") setreligionSuggestions([]);
+        return;
       }
 
-      const response = await api.get(endpoint);
+      try {
+        let endpoint = "";
+        if (type === "family") {
+          endpoint = `/api/admin/auto-suggest/user/user_families/?q=${encodeURIComponent(
+            query
+          )}`;
+        } else if (type === "culture") {
+          endpoint = `api/admin/auto-suggest/user/user_castes/?q=${encodeURIComponent(
+            query
+          )}`;
+        } else if (type === "religion") {
+          endpoint = `api/admin/auto-suggest/user/user_religions/?q=${encodeURIComponent(
+            query
+          )}`;
+        }
 
-      if (type === 'family') {
-        setFamilySuggestions(response.data.suggestions || []);
-      } else if (type === 'culture') {
-        setCultureSuggestions(response.data.suggestions || []);
-      } else if (type === 'religion') {
-        setReligionSuggestions(response.data.suggestions || []);
+        const response = await api.get(endpoint);
+
+        if (type === "family") {
+          setFamilySuggestions(response.data.suggestions || []);
+        } else if (type === "culture") {
+          setCultureSuggestions(response.data.suggestions || []);
+        } else if (type === "religion") {
+          setreligionSuggestions(response.data.suggestions || []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch suggestions:", error);
+        if (type === "family") setFamilySuggestions([]);
+        else if (type === "culture") setCultureSuggestions([]);
+        else if (type === "religion") setreligionSuggestions([]);
       }
-    } catch (error) {
-      console.error('Failed to fetch suggestions:', error);
-      if (type === 'family') setFamilySuggestions([]);
-      else if (type === 'culture') setCultureSuggestions([]);
-      else if (type === 'religion') setReligionSuggestions([]);
-    }
-  }, 300);
+    },
+    300
+  );
 
   const handleInputChange = (
     field: keyof UserProfile,
     value: string | number | File
   ) => {
-    if (formErrors && (field === 'firstname' || field === 'dateofbirth' || field === 'gender' || field === 'preferred_language')) {
-      setFormErrors(prev => ({ ...prev, [field]: undefined }));
+    if (
+      formErrors &&
+      (field === "firstname" ||
+        field === "dateofbirth" ||
+        field === "gender" ||
+        field === "preferred_language")
+    ) {
+      setFormErrors((prev) => ({ ...prev, [field]: undefined }));
     }
 
-    if (field === 'contact_number' && typeof value === 'string') {
-      const digitsOnly = value.replace(/\D/g, '');
+    if (field === "contact_number" && typeof value === "string") {
+      const digitsOnly = value.replace(/\D/g, "");
       const truncated = digitsOnly.slice(0, 10);
-      setProfile(prev => ({ ...prev, [field]: truncated }));
+      setProfile((prev) => ({ ...prev, [field]: truncated }));
 
       if (truncated.length > 0) {
-        const validPrefixes = ['6', '7', '8', '9'];
+        const validPrefixes = ["6", "7", "8", "9"];
         if (truncated.length !== 10) {
-          setMobileError(language === 'ta'
-            ? 'அலைபேசி எண் 10 இலக்கங்களாக இருக்க வேண்டும்'
-            : 'Mobile number must be 10 digits');
+          setMobileError(
+            language === "ta"
+              ? "அலைபேசி எண் 10 இலக்கங்களாக இருக்க வேண்டும்"
+              : "Mobile number must be 10 digits"
+          );
         } else if (!validPrefixes.includes(truncated.charAt(0))) {
-          setMobileError(language === 'ta'
-            ? 'செல்லுபடியாகும் இந்திய அலைபேசி எண்ணை உள்ளிடவும் (6, 7, 8, 9 இல் தொடங்க வேண்டும்)'
-            : 'Enter a valid Indian mobile number (must start with 6, 7, 8, 9)');
+          setMobileError(
+            language === "ta"
+              ? "செல்லுபடியாகும் இந்திய அலைபேசி எண்ணை உள்ளிடவும் (6, 7, 8, 9 இல் தொடங்க வேண்டும்)"
+              : "Enter a valid Indian mobile number (must start with 6, 7, 8, 9)"
+          );
         } else {
-          setMobileError('');
+          setMobileError("");
         }
       } else {
-        setMobileError('');
+        setMobileError("");
       }
       return;
     }
 
     // Handle language change
-    if (field === 'preferred_language' && (value === 'ta' || value === 'en')) {
-      setProfile(prev => ({ ...prev, [field]: value }));
-      setLanguage(value as 'ta' | 'en');
+    if (field === "preferred_language" && (value === "ta" || value === "en")) {
+      setProfile((prev) => ({ ...prev, [field]: value }));
+      setLanguage(value as "ta" | "en");
       setShowMotherTongueDropdown(false);
       return;
     }
 
-    setProfile(prev => ({ ...prev, [field]: value }));
+    setProfile((prev) => ({ ...prev, [field]: value }));
 
-    if (typeof value === 'string') {
-      if (field === 'familyname1') {
-        fetchSuggestions('familyname1', value, 'family');
-        setActiveSuggestionField('familyname1');
+    if (typeof value === "string") {
+      if (field === "familyname1") {
+        fetchSuggestions("familyname1", value, "family");
+        setActiveSuggestionField("familyname1");
       }
-      if (field === 'cultureoflife') {
-        fetchSuggestions('cultureoflife', value, 'culture');
-        setActiveSuggestionField('cultureoflife');
+      if (field === "cultureoflife") {
+        fetchSuggestions("cultureoflife", value, "culture");
+        setActiveSuggestionField("cultureoflife");
       }
-      if (field === 'religion') {
-        fetchSuggestions('religion', value, 'religion');
-        setActiveSuggestionField('religion');
+      if (field === "religion") {
+        fetchSuggestions("religion", value, "religion");
+        setActiveSuggestionField("religion");
       }
     }
   };
 
   const handleSuggestionClick = (field: string, suggestion: Suggestion) => {
-    setProfile(prev => ({ ...prev, [field]: suggestion.value }));
-    if (field === 'familyname1') setFamilySuggestions([]);
-    else if (field === 'cultureoflife') setCultureSuggestions([]);
-    else if (field === 'religion') setReligionSuggestions([]);
+    setProfile((prev) => ({ ...prev, [field]: suggestion.value }));
+    if (field === "familyname1") setFamilySuggestions([]);
+    else if (field === "cultureoflife") setCultureSuggestions([]);
+    else if (field === "religion") setreligionSuggestions([]);
     setActiveSuggestionField(null);
   };
 
@@ -318,53 +372,80 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
   const handleSave = async () => {
     try {
       setSaving(true);
-      setError('');
-      setSuccess('');
+      setError("");
+      setSuccess("");
       setFormErrors({});
 
       let hasError = false;
       const newErrors: any = {};
 
       if (!profile.firstname) {
-        newErrors.firstname = language === 'ta' ? 'முதல் பெயர் அவசியம்' : 'First Name is required';
+        newErrors.firstname =
+          language === "ta" ? "முதல் பெயர் அவசியம்" : "First Name is required";
         hasError = true;
       }
 
       if (!profile.dateofbirth) {
-        newErrors.dateofbirth = language === 'ta' ? 'பிறந்த தேதி அவசியம்' : 'Date of Birth is required';
+        newErrors.dateofbirth =
+          language === "ta"
+            ? "பிறந்த தேதி அவசியம்"
+            : "Date of Birth is required";
         hasError = true;
       }
 
       if (!profile.gender) {
-        newErrors.gender = language === 'ta' ? 'பாலினம் அவசியம்' : 'Gender is required';
+        newErrors.gender =
+          language === "ta" ? "பாலினம் அவசியம்" : "Gender is required";
         hasError = true;
       }
 
       if (!profile.preferred_language) {
-        newErrors.preferred_language = language === 'ta' ? 'தாய்மொழி அவசியம்' : 'Mother Tongue is required';
+        newErrors.preferred_language =
+          language === "ta" ? "தாய்மொழி அவசியம்" : "Mother Tongue is required";
         hasError = true;
       }
 
-      if (profile.contact_number && !validateMobileNumber(profile.contact_number)) {
-        setError(language === 'ta'
-          ? 'அலைபேசி எண் 10 இலக்கங்களாக இருக்க வேண்டும்'
-          : 'Mobile number must be 10 digits');
+      if (
+        profile.contact_number &&
+        !validateMobileNumber(profile.contact_number)
+      ) {
+        setError(
+          language === "ta"
+            ? "அலைபேசி எண் 10 இலக்கங்களாக இருக்க வேண்டும்"
+            : "Mobile number must be 10 digits"
+        );
         setSaving(false);
         return;
       }
 
       if (hasError) {
         setFormErrors(newErrors);
-        setError(language === 'ta' ? 'தேவையான புலங்களை நிரப்பவும்' : 'Please fill all required fields');
+        setError(
+          language === "ta"
+            ? "தேவையான புலங்களை நிரப்பவும்"
+            : "Please fill all required fields"
+        );
 
         if (newErrors.firstname) {
-          firstnameRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          firstnameRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
         } else if (newErrors.dateofbirth) {
-          dateofbirthRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          dateofbirthRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
         } else if (newErrors.gender) {
-          genderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          genderRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
         } else if (newErrors.preferred_language) {
-          languageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          languageRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
         }
 
         setSaving(false);
@@ -383,26 +464,29 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
       const updatedProfile = await authService.updateMyProfile(profileData);
       setProfile(updatedProfile);
 
-      if (updatedProfile.preferred_language && (updatedProfile.preferred_language === 'ta' || updatedProfile.preferred_language === 'en')) {
+      if (
+        updatedProfile.preferred_language &&
+        (updatedProfile.preferred_language === "ta" ||
+          updatedProfile.preferred_language === "en")
+      ) {
         setLanguage(updatedProfile.preferred_language);
       }
 
       if (updatedProfile.firstname) {
-        localStorage.setItem('currentUserName', updatedProfile.firstname);
-        sessionStorage.setItem('currentUserName', updatedProfile.firstname);
+        localStorage.setItem("currentUserName", updatedProfile.firstname);
+        sessionStorage.setItem("currentUserName", updatedProfile.firstname);
       }
 
-      setSuccess(t('profileSaveSuccess'));
+      setSuccess(t("profileSaveSuccess"));
 
       setTimeout(() => {
-        setSuccess('');
-        navigate('/genealogy');
+        setSuccess("");
+        navigate("/genealogy");
       }, 1500);
-
     } catch (err: unknown) {
       const error = err as Error;
-      setError(error.message || t('error'));
-      console.error('Save failed:', err);
+      setError(error.message || t("error"));
+      console.error("Save failed:", err);
     } finally {
       setSaving(false);
     }
@@ -410,35 +494,35 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
 
   const handleCancel = () => {
     loadProfile();
-    setMobileError('');
+    setMobileError("");
   };
 
   const handleGoToGenealogy = () => {
-    navigate('/genealogy');
+    navigate("/genealogy");
   };
 
-  const toggleInfo = (type: 'family' | 'lifestyle' | 'culture') => {
-    setOpenInfo(prev => ({
+  const toggleInfo = (type: "family" | "religion" | "culture") => {
+    setOpenInfo((prev) => ({
       ...prev,
-      [type]: !prev[type]
+      [type]: !prev[type],
     }));
   };
 
   // Mother tongue options
   const languageOptions = [
-    { value: 'ta', label: 'தமிழ்', nativeLabel: 'தமிழ்' },
-    { value: 'en', label: 'English', nativeLabel: 'English' }
+    { value: "ta", label: "தமிழ்", nativeLabel: "தமிழ்" },
+    { value: "en", label: "English", nativeLabel: "English" },
   ];
 
   // Suggestion dropdown component
   const SuggestionDropdown = ({
     suggestions,
     field,
-    onSelect
+    onSelect,
   }: {
-    suggestions: Suggestion[],
-    field: string,
-    onSelect: (suggestion: Suggestion) => void
+    suggestions: Suggestion[];
+    field: string;
+    onSelect: (suggestion: Suggestion) => void;
   }) => {
     if (!suggestions || suggestions.length === 0) return null;
 
@@ -456,7 +540,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
               </span>
               {suggestion.count > 0 && (
                 <span className="text-xs text-amber-600 bg-amber-100 px-3 py-1 rounded-full group-hover:bg-amber-200 transition-colors">
-                  {suggestion.count} {suggestion.count === 1 ? 'use' : 'uses'}
+                  {suggestion.count} {suggestion.count === 1 ? "use" : "uses"}
                 </span>
               )}
             </div>
@@ -493,11 +577,15 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                   className="w-full h-full object-cover"
                   onError={(e) => {
                     // Fallback if logo doesn't load
-                    e.currentTarget.style.display = 'none';
-                    e.currentTarget.parentElement?.classList.add('flex', 'items-center', 'justify-center');
+                    e.currentTarget.style.display = "none";
+                    e.currentTarget.parentElement?.classList.add(
+                      "flex",
+                      "items-center",
+                      "justify-center"
+                    );
                     // Add fallback icon
-                    const fallbackDiv = document.createElement('div');
-                    fallbackDiv.className = 'text-center';
+                    const fallbackDiv = document.createElement("div");
+                    fallbackDiv.className = "text-center";
                     fallbackDiv.innerHTML = `
                       <div class="relative">
                         <div class="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-2">
@@ -527,17 +615,28 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
           {/* Loading text with animation */}
           <div className="space-y-4">
             <h2 className="text-3xl font-bold bg-linear-to-r from-amber-800 via-orange-800 to-yellow-800 bg-clip-text text-transparent">
-              {language === 'ta' ? 'கொடிவழி வரைபடம்' : 'Genealogy Map'}
+              {language === "ta" ? "கொடிவழி வரைபடம்" : "Genealogy Map"}
             </h2>
             <p className="text-xl text-amber-700 font-medium animate-pulse">
-              {language === 'ta' ? 'உங்கள் வம்சத்தை கண்டறிகிறோம்...' : 'Discovering your lineage...'}
+              {language === "ta"
+                ? "உங்கள் வம்சத்தை கண்டறிகிறோம்..."
+                : "Discovering your lineage..."}
             </p>
 
             {/* Loading dots */}
             <div className="flex items-center justify-center gap-2 mt-4">
-              <div className="w-2 h-2 bg-amber-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
-              <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-              <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+              <div
+                className="w-2 h-2 bg-amber-500 rounded-full animate-bounce"
+                style={{ animationDelay: "0s" }}
+              ></div>
+              <div
+                className="w-2 h-2 bg-orange-500 rounded-full animate-bounce"
+                style={{ animationDelay: "0.2s" }}
+              ></div>
+              <div
+                className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce"
+                style={{ animationDelay: "0.4s" }}
+              ></div>
             </div>
           </div>
 
@@ -550,7 +649,9 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
 
           {/* Version or tagline */}
           <p className="mt-6 text-sm text-amber-600 font-medium">
-            {language === 'ta' ? 'உங்கள் குடும்ப வரலாறு' : 'Your Family History'}
+            {language === "ta"
+              ? "உங்கள் குடும்ப வரலாறு"
+              : "Your Family History"}
           </p>
         </div>
 
@@ -602,7 +703,9 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                   <CheckCircle className="h-5 w-5 text-green-600" />
                 </div>
                 <div className="ml-3">
-                  <p className="text-sm text-green-700 font-medium">{success}</p>
+                  <p className="text-sm text-green-700 font-medium">
+                    {success}
+                  </p>
                 </div>
               </div>
             </div>
@@ -635,7 +738,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
             {/* Main title with enhanced styling */}
             <div className="inline-block relative mb-6">
               <h1 className="text-3xl md:text-4xl font-bold bg-linear-to-r from-amber-800 via-orange-800 to-yellow-800 bg-clip-text text-transparent mb-4 leading-tight">
-                {language === 'ta' ? 'சுயவிவரம்' : 'Profile'}
+                {language === "ta" ? "சுயவிவரம்" : "Profile"}
               </h1>
               {/* Decorative underline */}
               <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-32 h-1.5 bg-linear-to-r from-amber-500 via-orange-500 to-yellow-500 rounded-full shadow-lg"></div>
@@ -645,9 +748,9 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
 
             {/* Subtitle with better typography */}
             <p className="text-xl text-amber-700 mb-8 font-medium max-w-2xl mx-auto leading-relaxed">
-              {language === 'ta'
-                ? 'உங்கள் குடும்ப வரலாற்றை பதிவு செய்து, வம்சத்தை தொடர்ந்து கொண்டு போங்கள்'
-                : 'Record your family history and continue your lineage'}
+              {language === "ta"
+                ? "உங்கள் குடும்ப வரலாற்றை பதிவு செய்து, வம்சத்தை தொடர்ந்து கொண்டு போங்கள்"
+                : "Record your family history and continue your lineage"}
             </p>
 
             {/* Enhanced Quick Action Button */}
@@ -661,7 +764,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
               {/* Button content */}
               <span className="relative flex items-center">
                 <Map className="w-6 h-6 mr-3 group-hover:scale-110 transition-transform" />
-                {language === 'ta' ? 'கொடிவழி வரைபடம்' : 'Genealogy Map'}
+                {language === "ta" ? "கொடிவழி வரைபடம்" : "Genealogy Map"}
                 <ChevronRight className="w-5 h-5 ml-3 group-hover:translate-x-1 transition-transform" />
               </span>
 
@@ -682,24 +785,30 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
               </div>
               <div className="flex-1">
                 <h3 className="text-base font-bold text-amber-900 flex items-center gap-2">
-                  {language === 'ta' ? 'தனியுரிமை பாதுகாப்பு' : 'Privacy Protection'}
+                  {language === "ta"
+                    ? "தனியுரிமை பாதுகாப்பு"
+                    : "Privacy Protection"}
                 </h3>
                 <p className="text-sm text-gray-600 leading-relaxed mt-1">
-                  {language === 'ta'
-                    ? '🔒 உங்கள் விவரங்கள் குடும்ப உறுப்பினர்களுக்கு மட்டுமே காண்பிக்கப்படும்.'
-                    : '🔒 Your details are visible only to connected family members.'}
+                  {language === "ta"
+                    ? "🔒 உங்கள் விவரங்கள் குடும்ப உறுப்பினர்களுக்கு மட்டுமே காண்பிக்கப்படும்."
+                    : "🔒 Your details are visible only to connected family members."}
                 </p>
               </div>
               <div className="shrink-0 flex flex-col items-end gap-1">
                 <div className="flex items-center gap-1.5 px-3 py-1 bg-green-50 rounded-full border border-green-100">
                   <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
                   <span className="text-[10px] font-bold text-green-700 uppercase tracking-wider">
-                    {language === 'ta' ? 'பாதுகாக்கப்பட்டது' : 'Secured'}
+                    {language === "ta" ? "பாதுகாக்கப்பட்டது" : "Secured"}
                   </span>
                 </div>
                 <div className="flex items-center gap-1 text-[10px] text-amber-600 font-medium">
                   <Lock className="h-3 w-3" />
-                  <span>{language === 'ta' ? 'இருமுனை பாதுகாப்பு' : 'End-to-end Encryption'}</span>
+                  <span>
+                    {language === "ta"
+                      ? "இருமுனை பாதுகாப்பு"
+                      : "End-to-end Encryption"}
+                  </span>
                 </div>
               </div>
             </div>
@@ -721,26 +830,31 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
               <div className="absolute inset-0 bg-linear-to-r from-amber-500 to-yellow-500 rounded-full blur-xl opacity-50 group-hover:opacity-75 transition-opacity"></div>
               <div
                 className="relative w-28 h-28 md:w-32 md:h-32 bg-linear-to-br from-amber-500 to-amber-700 rounded-full flex items-center justify-center cursor-pointer overflow-hidden border-4 border-white shadow-xl transform group-hover:scale-105 transition-all duration-300"
-                onClick={() => document.getElementById('profile-image-input')?.click()}
+                onClick={() =>
+                  document.getElementById("profile-image-input")?.click()
+                }
               >
                 {profile.image ? (
                   <img
                     src={(() => {
-                      if (!profile.image) return '';
-                      if (typeof profile.image === 'string') {
-                        if (profile.image.startsWith('http')) return profile.image;
-                        const baseUrl = BASE_URL.replace(/\/$/, '');
-                        const path = profile.image.startsWith('/') ? profile.image : `/${profile.image}`;
+                      if (!profile.image) return "";
+                      if (typeof profile.image === "string") {
+                        if (profile.image.startsWith("http"))
+                          return profile.image;
+                        const baseUrl = BASE_URL.replace(/\/$/, "");
+                        const path = profile.image.startsWith("/")
+                          ? profile.image
+                          : `/${profile.image}`;
                         return `${baseUrl}${path}`;
                       }
                       try {
                         return URL.createObjectURL(profile.image);
                       } catch (e) {
-                        return '';
+                        return "";
                       }
                     })()}
                     onError={(e) => {
-                      e.currentTarget.style.display = 'none';
+                      e.currentTarget.style.display = "none";
                     }}
                     alt="Profile"
                     className="w-full h-full object-cover"
@@ -760,11 +874,12 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file) handleInputChange('image', file);
+                if (file) handleInputChange("image", file);
               }}
             />
             <h2 className="text-2xl font-bold text-amber-900 mt-4">
-              {profile.firstname || (language === 'ta' ? 'பயனர் பெயர்' : 'User Name')}
+              {profile.firstname ||
+                (language === "ta" ? "பயனர் பெயர்" : "User Name")}
             </h2>
           </div>
 
@@ -777,26 +892,34 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                   <Globe className="h-5 w-5 text-amber-700" />
                 </div>
                 <h3 className="text-xl font-bold text-amber-800">
-                  {language === 'ta' ? 'பொது விவரங்கள்' : 'Public Details'}
+                  {language === "ta" ? "பொது விவரங்கள்" : "Public Details"}
                 </h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* First Name */}
                 <div className="group">
                   <label className="block text-sm font-medium text-amber-700 mb-1 group-hover:text-amber-900 transition-colors">
-                    {language === 'ta' ? 'முதல் பெயர்' : 'First Name'} <span className="text-red-500">*</span>
+                    {language === "ta" ? "முதல் பெயர்" : "First Name"}{" "}
+                    <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <input
                       ref={firstnameRef}
                       type="text"
-                      value={profile.firstname || ''}
-                      onChange={(e) => handleInputChange('firstname', e.target.value)}
-                      className={`w-full px-4 py-3 bg-amber-50/50 border-2 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all duration-200 ${formErrors.firstname
-                        ? 'border-red-300 bg-red-50/50 focus:ring-red-500'
-                        : 'border-amber-200 hover:border-amber-300'
-                        }`}
-                      placeholder={language === 'ta' ? 'உங்கள் முதல் பெயர்' : 'Your first name'}
+                      value={profile.firstname || ""}
+                      onChange={(e) =>
+                        handleInputChange("firstname", e.target.value)
+                      }
+                      className={`w-full px-4 py-3 bg-amber-50/50 border-2 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all duration-200 ${
+                        formErrors.firstname
+                          ? "border-red-300 bg-red-50/50 focus:ring-red-500"
+                          : "border-amber-200 hover:border-amber-300"
+                      }`}
+                      placeholder={
+                        language === "ta"
+                          ? "உங்கள் முதல் பெயர்"
+                          : "Your first name"
+                      }
                     />
                     {formErrors.firstname && (
                       <p className="absolute -bottom-5 left-0 text-xs text-red-600 flex items-center gap-1">
@@ -810,50 +933,74 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                 {/* Second Name */}
                 <div className="group">
                   <label className="block text-sm font-medium text-amber-700 mb-1 group-hover:text-amber-900 transition-colors">
-                    {language === 'ta' ? 'இரண்டாம் பெயர்' : 'Second Name'}
+                    {language === "ta" ? "இரண்டாம் பெயர்" : "Second Name"}
                   </label>
                   <input
                     type="text"
-                    value={profile.secondname || ''}
-                    onChange={(e) => handleInputChange('secondname', e.target.value)}
+                    value={profile.secondname || ""}
+                    onChange={(e) =>
+                      handleInputChange("secondname", e.target.value)
+                    }
                     className="w-full px-4 py-3 bg-amber-50/50 border-2 border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all duration-200 hover:border-amber-300"
-                    placeholder={language === 'ta' ? 'உங்கள் இரண்டாம் பெயர்' : 'Your second name'}
+                    placeholder={
+                      language === "ta"
+                        ? "உங்கள் இரண்டாம் பெயர்"
+                        : "Your second name"
+                    }
                   />
                 </div>
 
                 {/* Third Name */}
                 <div className="group">
                   <label className="block text-sm font-medium text-amber-700 mb-1 group-hover:text-amber-900 transition-colors">
-                    {language === 'ta' ? 'மூன்றாம் பெயர்' : 'Third Name'}
+                    {language === "ta" ? "மூன்றாம் பெயர்" : "Third Name"}
                   </label>
                   <input
                     type="text"
-                    value={profile.thirdname || ''}
-                    onChange={(e) => handleInputChange('thirdname', e.target.value)}
+                    value={profile.thirdname || ""}
+                    onChange={(e) =>
+                      handleInputChange("thirdname", e.target.value)
+                    }
                     className="w-full px-4 py-3 bg-amber-50/50 border-2 border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all duration-200 hover:border-amber-300"
-                    placeholder={language === 'ta' ? 'உங்கள் மூன்றாம் பெயர்' : 'Your third name'}
+                    placeholder={
+                      language === "ta"
+                        ? "உங்கள் மூன்றாம் பெயர்"
+                        : "Your third name"
+                    }
                   />
                 </div>
 
                 {/* Gender */}
                 <div className="group">
                   <label className="block text-sm font-medium text-amber-700 mb-1 group-hover:text-amber-900 transition-colors">
-                    {language === 'ta' ? 'பாலினம்' : 'Gender'} <span className="text-red-500">*</span>
+                    {language === "ta" ? "பாலினம்" : "Gender"}{" "}
+                    <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <select
                       ref={genderRef}
-                      value={profile.gender || ''}
-                      onChange={(e) => handleInputChange('gender', e.target.value)}
-                      className={`w-full px-4 py-3 bg-amber-50/50 border-2 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none appearance-none cursor-pointer transition-all duration-200 ${formErrors.gender
-                        ? 'border-red-300 bg-red-50/50 focus:ring-red-500'
-                        : 'border-amber-200 hover:border-amber-300'
-                        }`}
+                      value={profile.gender || ""}
+                      onChange={(e) =>
+                        handleInputChange("gender", e.target.value)
+                      }
+                      className={`w-full px-4 py-3 bg-amber-50/50 border-2 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none appearance-none cursor-pointer transition-all duration-200 ${
+                        formErrors.gender
+                          ? "border-red-300 bg-red-50/50 focus:ring-red-500"
+                          : "border-amber-200 hover:border-amber-300"
+                      }`}
                     >
-                      <option value="" disabled className="bg-white">{language === 'ta' ? 'தேர்ந்தெடுக்கவும்' : 'Select'}</option>
-                      <option value="M" className="bg-white">{language === 'ta' ? 'ஆண்' : 'Male'}</option>
-                      <option value="F" className="bg-white">{language === 'ta' ? 'பெண்' : 'Female'}</option>
-                      <option value="O" className="bg-white">{language === 'ta' ? 'மற்றவை' : 'Other'}</option>
+                      <option value="" disabled className="bg-white">
+                        {language === "ta" ? "தேர்ந்தெடுக்கவும்" : "Select"}
+                      </option>
+                      <option value="M" className="bg-white">
+                        {language === "ta" ? "ஆண்" : "Male"}
+                      </option>
+                      <option value="F" className="bg-white">
+                        {language === "ta" ? "பெண்" : "Female"}
+                      </option>
+                      <option value="O" className="bg-white">
+                        {language === "ta" ? "மற்றவை" : "Other"}
+                      </option>
                     </select>
                     <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
                       <ChevronDown className="w-4 h-4 text-amber-600" />
@@ -876,26 +1023,32 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                   <Lock className="h-5 w-5 text-orange-700" />
                 </div>
                 <h3 className="text-xl font-bold text-orange-800">
-                  {language === 'ta' ? 'தனிப்பட்ட விவரங்கள்' : 'Private Details'}
+                  {language === "ta"
+                    ? "தனிப்பட்ட விவரங்கள்"
+                    : "Private Details"}
                 </h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Date of Birth */}
                 <div className="group">
                   <label className="block text-sm font-medium text-orange-700 mb-1 group-hover:text-orange-900 transition-colors">
-                    {language === 'ta' ? 'பிறந்த தேதி' : 'Date of Birth'} <span className="text-red-500">*</span>
+                    {language === "ta" ? "பிறந்த தேதி" : "Date of Birth"}{" "}
+                    <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <Calendar className="absolute left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 text-orange-400" />
                     <input
                       ref={dateofbirthRef}
                       type="date"
-                      value={profile.dateofbirth || ''}
-                      onChange={(e) => handleInputChange('dateofbirth', e.target.value)}
-                      className={`w-full pl-10 pr-4 py-3 bg-orange-50/50 border-2 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all duration-200 ${formErrors.dateofbirth
-                        ? 'border-red-300 bg-red-50/50 focus:ring-red-500'
-                        : 'border-orange-200 hover:border-orange-300'
-                        }`}
+                      value={profile.dateofbirth || ""}
+                      onChange={(e) =>
+                        handleInputChange("dateofbirth", e.target.value)
+                      }
+                      className={`w-full pl-10 pr-4 py-3 bg-orange-50/50 border-2 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all duration-200 ${
+                        formErrors.dateofbirth
+                          ? "border-red-300 bg-red-50/50 focus:ring-red-500"
+                          : "border-orange-200 hover:border-orange-300"
+                      }`}
                     />
                     {formErrors.dateofbirth && (
                       <p className="absolute -bottom-5 left-0 text-xs text-red-600 flex items-center gap-1">
@@ -909,32 +1062,38 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                 {/* Age */}
                 <div className="group">
                   <label className="block text-sm font-medium text-orange-700 mb-1 group-hover:text-orange-900 transition-colors">
-                    {language === 'ta' ? 'வயது' : 'Age'}
+                    {language === "ta" ? "வயது" : "Age"}
                   </label>
                   <input
                     type="number"
-                    value={profile.age || ''}
-                    onChange={(e) => handleInputChange('age', e.target.value)}
+                    value={profile.age || ""}
+                    onChange={(e) => handleInputChange("age", e.target.value)}
                     className="w-full px-4 py-3 bg-orange-50/50 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all duration-200 hover:border-orange-300"
                     min="0"
                     max="150"
-                    placeholder={language === 'ta' ? 'வயது' : 'Age'}
+                    placeholder={language === "ta" ? "வயது" : "Age"}
                   />
                 </div>
 
                 {/* Native Place */}
                 <div className="group">
                   <label className="block text-sm font-medium text-orange-700 mb-1 group-hover:text-orange-900 transition-colors">
-                    {language === 'ta' ? 'சொந்த ஊர்' : 'Native Place'}
+                    {language === "ta" ? "சொந்த ஊர்" : "Native Place"}
                   </label>
                   <div className="relative">
                     <Home className="absolute left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 text-orange-400" />
                     <input
                       type="text"
-                      value={profile.native || ''}
-                      onChange={(e) => handleInputChange('native', e.target.value)}
+                      value={profile.native || ""}
+                      onChange={(e) =>
+                        handleInputChange("native", e.target.value)
+                      }
                       className="w-full pl-10 pr-4 py-3 bg-orange-50/50 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all duration-200 hover:border-orange-300"
-                      placeholder={language === 'ta' ? 'உங்கள் சொந்த ஊர்' : 'Your native place'}
+                      placeholder={
+                        language === "ta"
+                          ? "உங்கள் சொந்த ஊர்"
+                          : "Your native place"
+                      }
                     />
                   </div>
                 </div>
@@ -942,28 +1101,41 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                 {/* Present City */}
                 <div className="group">
                   <label className="block text-sm font-medium text-orange-700 mb-1 group-hover:text-orange-900 transition-colors">
-                    {language === 'ta' ? 'தற்போதைய நகரம்' : 'Present City'}
+                    {language === "ta" ? "தற்போதைய நகரம்" : "Present City"}
                   </label>
                   <div className="relative">
                     <MapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 text-orange-400" />
                     <input
                       type="text"
-                      value={profile.present_city || ''}
-                      onChange={(e) => handleInputChange('present_city', e.target.value)}
+                      value={profile.present_city || ""}
+                      onChange={(e) =>
+                        handleInputChange("present_city", e.target.value)
+                      }
                       className="w-full pl-10 pr-12 py-3 bg-orange-50/50 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all duration-200 hover:border-orange-300"
-                      placeholder={language === 'ta' ? 'உங்கள் தற்போதைய நகரம்' : 'Your present city'}
+                      placeholder={
+                        language === "ta"
+                          ? "உங்கள் தற்போதைய நகரம்"
+                          : "Your present city"
+                      }
                     />
                     <button
                       type="button"
                       onClick={getCurrentLocation}
                       disabled={gettingLocation}
                       className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 bg-orange-100 hover:bg-orange-200 rounded-lg text-orange-600 hover:text-orange-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed group"
-                      title={language === 'ta' ? 'தற்போதைய இருப்பிடத்தைப் பெறுக' : 'Get current location'}
+                      title={
+                        language === "ta"
+                          ? "தற்போதைய இருப்பிடத்தைப் பெறுக"
+                          : "Get current location"
+                      }
                     >
                       {gettingLocation ? (
                         <Loader2 size={18} className="animate-spin" />
                       ) : (
-                        <MapPin size={18} className="group-hover:scale-110 transition-transform" />
+                        <MapPin
+                          size={18}
+                          className="group-hover:scale-110 transition-transform"
+                        />
                       )}
                     </button>
                   </div>
@@ -972,12 +1144,12 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                 {/* Taluk */}
                 <div className="group">
                   <label className="block text-sm font-medium text-orange-700 mb-1 group-hover:text-orange-900 transition-colors">
-                    {language === 'ta' ? 'தாலுகா' : 'Taluk'}
+                    {language === "ta" ? "தாலுகா" : "Taluk"}
                   </label>
                   <input
                     type="text"
-                    value={profile.taluk || ''}
-                    onChange={(e) => handleInputChange('taluk', e.target.value)}
+                    value={profile.taluk || ""}
+                    onChange={(e) => handleInputChange("taluk", e.target.value)}
                     className="w-full px-4 py-3 bg-orange-50/50 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all duration-200 hover:border-orange-300"
                   />
                 </div>
@@ -985,12 +1157,14 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                 {/* District */}
                 <div className="group">
                   <label className="block text-sm font-medium text-orange-700 mb-1 group-hover:text-orange-900 transition-colors">
-                    {language === 'ta' ? 'மாவட்டம்' : 'District'}
+                    {language === "ta" ? "மாவட்டம்" : "District"}
                   </label>
                   <input
                     type="text"
-                    value={profile.district || ''}
-                    onChange={(e) => handleInputChange('district', e.target.value)}
+                    value={profile.district || ""}
+                    onChange={(e) =>
+                      handleInputChange("district", e.target.value)
+                    }
                     className="w-full px-4 py-3 bg-orange-50/50 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all duration-200 hover:border-orange-300"
                   />
                 </div>
@@ -998,12 +1172,12 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                 {/* State */}
                 <div className="group">
                   <label className="block text-sm font-medium text-orange-700 mb-1 group-hover:text-orange-900 transition-colors">
-                    {language === 'ta' ? 'மாநிலம்' : 'State'}
+                    {language === "ta" ? "மாநிலம்" : "State"}
                   </label>
                   <input
                     type="text"
-                    value={profile.state || ''}
-                    onChange={(e) => handleInputChange('state', e.target.value)}
+                    value={profile.state || ""}
+                    onChange={(e) => handleInputChange("state", e.target.value)}
                     className="w-full px-4 py-3 bg-orange-50/50 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all duration-200 hover:border-orange-300"
                   />
                 </div>
@@ -1011,19 +1185,24 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                 {/* Contact Number */}
                 <div className="group">
                   <label className="block text-sm font-medium text-orange-700 mb-1 group-hover:text-orange-900 transition-colors">
-                    {language === 'ta' ? 'தொடர்பு எண்' : 'Contact Number'}
+                    {language === "ta" ? "தொடர்பு எண்" : "Contact Number"}
                   </label>
                   <div className="relative">
                     <Phone className="absolute left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 text-orange-400" />
                     <input
                       type="tel"
-                      value={profile.contact_number || ''}
-                      onChange={(e) => handleInputChange('contact_number', e.target.value)}
-                      className={`w-full pl-10 pr-4 py-3 bg-orange-50/50 border-2 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all duration-200 ${mobileError
-                        ? 'border-red-300 bg-red-50/50 focus:ring-red-500'
-                        : 'border-orange-200 hover:border-orange-300'
-                        }`}
-                      placeholder={language === 'ta' ? '10 இலக்க எண்' : '10 digit number'}
+                      value={profile.contact_number || ""}
+                      onChange={(e) =>
+                        handleInputChange("contact_number", e.target.value)
+                      }
+                      className={`w-full pl-10 pr-4 py-3 bg-orange-50/50 border-2 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all duration-200 ${
+                        mobileError
+                          ? "border-red-300 bg-red-50/50 focus:ring-red-500"
+                          : "border-orange-200 hover:border-orange-300"
+                      }`}
+                      placeholder={
+                        language === "ta" ? "10 இலக்க எண்" : "10 digit number"
+                      }
                       maxLength={10}
                     />
                   </div>
@@ -1033,23 +1212,27 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                       {mobileError}
                     </p>
                   )}
-                  {!mobileError && profile.contact_number && profile.contact_number.length === 10 && (
-                    <p className="mt-1 text-xs text-green-600 flex items-center gap-1">
-                      <CheckCircle size={10} />
-                      {language === 'ta' ? 'சரியான எண்' : 'Valid number'}
-                    </p>
-                  )}
+                  {!mobileError &&
+                    profile.contact_number &&
+                    profile.contact_number.length === 10 && (
+                      <p className="mt-1 text-xs text-green-600 flex items-center gap-1">
+                        <CheckCircle size={10} />
+                        {language === "ta" ? "சரியான எண்" : "Valid number"}
+                      </p>
+                    )}
                 </div>
 
                 {/* Nationality */}
                 <div className="group">
                   <label className="block text-sm font-medium text-orange-700 mb-1 group-hover:text-orange-900 transition-colors">
-                    {language === 'ta' ? 'தேசியம்' : 'Nationality'}
+                    {language === "ta" ? "தேசியம்" : "Nationality"}
                   </label>
                   <input
                     type="text"
-                    value={profile.nationality || ''}
-                    onChange={(e) => handleInputChange('nationality', e.target.value)}
+                    value={profile.nationality || ""}
+                    onChange={(e) =>
+                      handleInputChange("nationality", e.target.value)
+                    }
                     className="w-full px-4 py-3 bg-orange-50/50 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all duration-200 hover:border-orange-300"
                   />
                 </div>
@@ -1063,19 +1246,21 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                   <Heart className="h-5 w-5 text-yellow-700" />
                 </div>
                 <h3 className="text-xl font-bold text-yellow-800">
-                  {language === 'ta' ? 'பண்பாட்டு விவரங்கள்' : 'Cultural Details'}
+                  {language === "ta"
+                    ? "பண்பாட்டு விவரங்கள்"
+                    : "Cultural Details"}
                 </h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Lifestyle - Religion */}
+                {/* religion - religion */}
                 <div className="relative group">
                   <div className="flex items-center gap-2 mb-1">
                     <label className="text-sm font-medium text-yellow-700 group-hover:text-yellow-900 transition-colors">
-                      {language === 'ta' ? 'வாழ்வியல் கலாச்சாரம்' : 'Lifestyle'}
+                      {language === "ta" ? "வாழ்வியல் கலாச்சாரம்" : "religion"}
                     </label>
                     <button
                       type="button"
-                      onClick={() => toggleInfo('lifestyle')}
+                      onClick={() => toggleInfo("religion")}
                       className="p-1 rounded-full bg-amber-100 text-amber-600 hover:bg-amber-200 hover:text-amber-700 transition-colors"
                     >
                       <Info size={12} />
@@ -1084,24 +1269,35 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                   <div className="relative">
                     <input
                       type="text"
-                      value={profile.religion || ''}
-                      onChange={(e) => handleInputChange('religion', e.target.value)}
-                      onFocus={() => setActiveSuggestionField('religion')}
+                      value={profile.religion || ""}
+                      onChange={(e) =>
+                        handleInputChange("religion", e.target.value)
+                      }
+                      onFocus={() => setActiveSuggestionField("religion")}
                       className="w-full px-4 py-3 bg-yellow-50/50 border-2 border-yellow-200 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all duration-200 hover:border-yellow-300"
-                      placeholder={language === 'ta' ? 'தேடுங்கள்...' : 'Search...'}
+                      placeholder={
+                        language === "ta" ? "தேடுங்கள்..." : "Search..."
+                      }
                     />
-                    {activeSuggestionField === 'religion' && (
+                    {activeSuggestionField === "religion" && (
                       <SuggestionDropdown
                         suggestions={religionSuggestions}
                         field="religion"
-                        onSelect={(suggestion) => handleSuggestionClick('religion', suggestion)}
+                        onSelect={(suggestion) =>
+                          handleSuggestionClick("religion", suggestion)
+                        }
                       />
                     )}
                   </div>
-                  {openInfo.lifestyle && (
+                  {openInfo.religion && (
                     <div className="absolute z-30 mt-2 left-0 w-64 bg-white border border-amber-200 rounded-xl shadow-xl p-4 animate-fadeIn">
-                      <p className="text-sm text-gray-700">{lifestyleInfoText}</p>
-                      <button onClick={() => toggleInfo('lifestyle')} className="absolute top-2 right-2 text-gray-400 hover:text-gray-600">
+                      <p className="text-sm text-gray-700">
+                        {religionInfoText}
+                      </p>
+                      <button
+                        onClick={() => toggleInfo("religion")}
+                        className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
+                      >
                         <X size={14} />
                       </button>
                     </div>
@@ -1112,11 +1308,13 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                 <div className="relative group">
                   <div className="flex items-center gap-2 mb-1">
                     <label className="text-sm font-medium text-yellow-700 group-hover:text-yellow-900 transition-colors">
-                      {language === 'ta' ? 'குடும்பப் பெயர் 1' : 'Culture of Life'}
+                      {language === "ta"
+                        ? "குடும்பப் பெயர் 1"
+                        : "Culture of Life"}
                     </label>
                     <button
                       type="button"
-                      onClick={() => toggleInfo('culture')}
+                      onClick={() => toggleInfo("culture")}
                       className="p-1 rounded-full bg-amber-100 text-amber-600 hover:bg-amber-200 hover:text-amber-700 transition-colors"
                     >
                       <Info size={12} />
@@ -1125,24 +1323,33 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                   <div className="relative">
                     <input
                       type="text"
-                      value={profile.cultureoflife || ''}
-                      onChange={(e) => handleInputChange('cultureoflife', e.target.value)}
-                      onFocus={() => setActiveSuggestionField('cultureoflife')}
+                      value={profile.cultureoflife || ""}
+                      onChange={(e) =>
+                        handleInputChange("cultureoflife", e.target.value)
+                      }
+                      onFocus={() => setActiveSuggestionField("cultureoflife")}
                       className="w-full px-4 py-3 bg-yellow-50/50 border-2 border-yellow-200 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all duration-200 hover:border-yellow-300"
-                      placeholder={language === 'ta' ? 'தேடுங்கள்...' : 'Search...'}
+                      placeholder={
+                        language === "ta" ? "தேடுங்கள்..." : "Search..."
+                      }
                     />
-                    {activeSuggestionField === 'cultureoflife' && (
+                    {activeSuggestionField === "cultureoflife" && (
                       <SuggestionDropdown
                         suggestions={cultureSuggestions}
                         field="cultureoflife"
-                        onSelect={(suggestion) => handleSuggestionClick('cultureoflife', suggestion)}
+                        onSelect={(suggestion) =>
+                          handleSuggestionClick("cultureoflife", suggestion)
+                        }
                       />
                     )}
                   </div>
                   {openInfo.culture && (
                     <div className="absolute z-30 mt-2 left-0 w-64 bg-white border border-amber-200 rounded-xl shadow-xl p-4 animate-fadeIn">
                       <p className="text-sm text-gray-700">{cultureInfoText}</p>
-                      <button onClick={() => toggleInfo('culture')} className="absolute top-2 right-2 text-gray-400 hover:text-gray-600">
+                      <button
+                        onClick={() => toggleInfo("culture")}
+                        className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
+                      >
                         <X size={14} />
                       </button>
                     </div>
@@ -1153,11 +1360,11 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                 <div className="relative group">
                   <div className="flex items-center gap-2 mb-1">
                     <label className="text-sm font-medium text-yellow-700 group-hover:text-yellow-900 transition-colors">
-                      {language === 'ta' ? 'குடும்பப் பெயர் 2' : 'Family Name'}
+                      {language === "ta" ? "குடும்பப் பெயர் 2" : "Family Name"}
                     </label>
                     <button
                       type="button"
-                      onClick={() => toggleInfo('family')}
+                      onClick={() => toggleInfo("family")}
                       className="p-1 rounded-full bg-amber-100 text-amber-600 hover:bg-amber-200 hover:text-amber-700 transition-colors"
                     >
                       <Info size={12} />
@@ -1166,24 +1373,33 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                   <div className="relative">
                     <input
                       type="text"
-                      value={profile.familyname1 || ''}
-                      onChange={(e) => handleInputChange('familyname1', e.target.value)}
-                      onFocus={() => setActiveSuggestionField('familyname1')}
+                      value={profile.familyname1 || ""}
+                      onChange={(e) =>
+                        handleInputChange("familyname1", e.target.value)
+                      }
+                      onFocus={() => setActiveSuggestionField("familyname1")}
                       className="w-full px-4 py-3 bg-yellow-50/50 border-2 border-yellow-200 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all duration-200 hover:border-yellow-300"
-                      placeholder={language === 'ta' ? 'தேடுங்கள்...' : 'Search...'}
+                      placeholder={
+                        language === "ta" ? "தேடுங்கள்..." : "Search..."
+                      }
                     />
-                    {activeSuggestionField === 'familyname1' && (
+                    {activeSuggestionField === "familyname1" && (
                       <SuggestionDropdown
                         suggestions={familySuggestions}
                         field="familyname1"
-                        onSelect={(suggestion) => handleSuggestionClick('familyname1', suggestion)}
+                        onSelect={(suggestion) =>
+                          handleSuggestionClick("familyname1", suggestion)
+                        }
                       />
                     )}
                   </div>
                   {openInfo.family && (
                     <div className="absolute z-30 mt-2 left-0 w-64 bg-white border border-amber-200 rounded-xl shadow-xl p-4 animate-fadeIn">
                       <p className="text-sm text-gray-700">{familyInfoText}</p>
-                      <button onClick={() => toggleInfo('family')} className="absolute top-2 right-2 text-gray-400 hover:text-gray-600">
+                      <button
+                        onClick={() => toggleInfo("family")}
+                        className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
+                      >
                         <X size={14} />
                       </button>
                     </div>
@@ -1193,42 +1409,58 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                 {/* Preferred Language - Mother Tongue - Improved Design */}
                 <div className="group" ref={languageRef}>
                   <label className="block text-sm font-medium text-yellow-700 mb-1 group-hover:text-yellow-900 transition-colors">
-                    {language === 'ta' ? 'தாய்மொழி' : 'Mother Tongue'} <span className="text-red-500">*</span>
+                    {language === "ta" ? "தாய்மொழி" : "Mother Tongue"}{" "}
+                    <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <button
                       type="button"
-                      onClick={() => setShowMotherTongueDropdown(!showMotherTongueDropdown)}
-                      className={`w-full px-4 py-3 bg-yellow-50/50 border-2 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all duration-200 text-left flex items-center justify-between ${formErrors.preferred_language
-                        ? 'border-red-300 bg-red-50/50 focus:ring-red-500'
-                        : 'border-yellow-200 hover:border-yellow-300'
-                        }`}
+                      onClick={() =>
+                        setShowMotherTongueDropdown(!showMotherTongueDropdown)
+                      }
+                      className={`w-full px-4 py-3 bg-yellow-50/50 border-2 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all duration-200 text-left flex items-center justify-between ${
+                        formErrors.preferred_language
+                          ? "border-red-300 bg-red-50/50 focus:ring-red-500"
+                          : "border-yellow-200 hover:border-yellow-300"
+                      }`}
                     >
                       <span className="flex items-center gap-2">
-                        {profile.preferred_language === 'ta' ? (
+                        {profile.preferred_language === "ta" ? (
                           <>
                             <span className="text-lg">🇮🇳</span>
-                            <span className="font-medium text-yellow-900">Tamil</span>
+                            <span className="font-medium text-yellow-900">
+                              Tamil
+                            </span>
                           </>
-                        ) : profile.preferred_language === 'en' ? (
+                        ) : profile.preferred_language === "en" ? (
                           <>
                             <span className="text-lg">🇬🇧</span>
-                            <span className="font-medium text-yellow-900">Eng</span>
+                            <span className="font-medium text-yellow-900">
+                              Eng
+                            </span>
                           </>
                         ) : (
                           <span className="text-yellow-600">
-                            {language === 'ta' ? 'தாய்மொழியை தேர்ந்தெடுக்கவும்' : 'Select your mother tongue'}
+                            {language === "ta"
+                              ? "தாய்மொழியை தேர்ந்தெடுக்கவும்"
+                              : "Select your mother tongue"}
                           </span>
                         )}
                       </span>
-                      <ChevronDown className={`w-5 h-5 text-yellow-600 transition-transform duration-200 ${showMotherTongueDropdown ? 'rotate-180' : ''}`} />
+                      <ChevronDown
+                        className={`w-5 h-5 text-yellow-600 transition-transform duration-200 ${
+                          showMotherTongueDropdown ? "rotate-180" : ""
+                        }`}
+                      />
                     </button>
 
                     {showMotherTongueDropdown && (
                       <div className="absolute z-50 w-full mt-2 bg-white/95 backdrop-blur-sm border border-yellow-200 rounded-xl shadow-2xl animate-slideDown overflow-hidden">
                         <button
                           type="button"
-                          onClick={() => handleInputChange('preferred_language', 'ta')}
+                          onClick={() =>
+                            handleInputChange("preferred_language", "ta")
+                          }
                           className="w-full px-4 py-4 text-left hover:bg-linear-to-r hover:from-yellow-50 hover:to-amber-50 transition-all duration-200 group border-b border-yellow-100 last:border-b-0"
                         >
                           <div className="flex items-center justify-between">
@@ -1238,17 +1470,21 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                                 <span className="font-semibold text-yellow-900 group-hover:text-yellow-700 transition-colors text-lg block">
                                   Tamil
                                 </span>
-                                <span className="text-xs text-yellow-600">தமிழ்</span>
+                                <span className="text-xs text-yellow-600">
+                                  தமிழ்
+                                </span>
                               </div>
                             </div>
-                            {profile.preferred_language === 'ta' && (
+                            {profile.preferred_language === "ta" && (
                               <CheckCircle className="h-5 w-5 text-green-600" />
                             )}
                           </div>
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleInputChange('preferred_language', 'en')}
+                          onClick={() =>
+                            handleInputChange("preferred_language", "en")
+                          }
                           className="w-full px-4 py-4 text-left hover:bg-linear-to-r hover:from-yellow-50 hover:to-amber-50 transition-all duration-200 group"
                         >
                           <div className="flex items-center justify-between">
@@ -1258,10 +1494,12 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                                 <span className="font-semibold text-yellow-900 group-hover:text-yellow-700 transition-colors text-lg block">
                                   Eng
                                 </span>
-                                <span className="text-xs text-yellow-600">English</span>
+                                <span className="text-xs text-yellow-600">
+                                  English
+                                </span>
                               </div>
                             </div>
-                            {profile.preferred_language === 'en' && (
+                            {profile.preferred_language === "en" && (
                               <CheckCircle className="h-5 w-5 text-green-600" />
                             )}
                           </div>
@@ -1278,14 +1516,15 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                   </div>
 
                   {/* Hint text */}
-                  {!profile.preferred_language && !formErrors.preferred_language && (
-                    <p className="mt-1 text-xs text-yellow-600 flex items-center gap-1">
-                      <Info size={10} />
-                      {language === 'ta'
-                        ? 'உங்கள் தாய்மொழியைத் தேர்ந்தெடுக்கவும்'
-                        : 'Please select your mother tongue'}
-                    </p>
-                  )}
+                  {!profile.preferred_language &&
+                    !formErrors.preferred_language && (
+                      <p className="mt-1 text-xs text-yellow-600 flex items-center gap-1">
+                        <Info size={10} />
+                        {language === "ta"
+                          ? "உங்கள் தாய்மொழியைத் தேர்ந்தெடுக்கவும்"
+                          : "Please select your mother tongue"}
+                      </p>
+                    )}
                 </div>
               </div>
             </section>
@@ -1298,7 +1537,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
               className="group relative px-8 py-3 bg-linear-to-r from-amber-100 to-yellow-100 text-amber-800 rounded-xl font-semibold hover:from-amber-200 hover:to-yellow-200 transition-all duration-300 flex items-center justify-center shadow-md hover:shadow-lg transform hover:-translate-y-0.5 w-full sm:w-auto"
             >
               <Map className="w-5 h-5 mr-2 group-hover:scale-110 transition-transform" />
-              {language === 'ta' ? 'கொடிவழி வரைபடம்' : 'Genealogy Map'}
+              {language === "ta" ? "கொடிவழி வரைபடம்" : "Genealogy Map"}
               <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
             </button>
 
@@ -1308,7 +1547,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                 disabled={saving}
                 className="px-8 py-3 bg-gray-100 text-gray-600 rounded-xl font-semibold hover:bg-gray-200 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200 hover:border-gray-300 w-full sm:w-auto"
               >
-                {language === 'ta' ? 'ரத்து' : 'Cancel'}
+                {language === "ta" ? "ரத்து" : "Cancel"}
               </button>
               <button
                 onClick={handleSave}
@@ -1320,10 +1559,12 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                   {saving ? (
                     <>
                       <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                      {language === 'ta' ? 'சேமிக்கிறது...' : 'Saving...'}
+                      {language === "ta" ? "சேமிக்கிறது..." : "Saving..."}
                     </>
+                  ) : language === "ta" ? (
+                    "சேமி"
                   ) : (
-                    language === 'ta' ? 'சேமி' : 'Save'
+                    "Save"
                   )}
                 </span>
               </button>

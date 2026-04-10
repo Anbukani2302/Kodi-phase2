@@ -1,5 +1,3 @@
-// E:\kodi website\src\components\ChatPage.tsx
-
 import React from "react";
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Plus, Search, Users, Loader2, MessageCircle, ArrowLeft, MoreVertical, Paperclip, Trash, Trash2, Check, CheckCheck, X, FileIcon, Download, ChevronDown } from 'lucide-react';
@@ -10,6 +8,15 @@ import { useAuth } from '../hooks/useAuth';
 import { connectionService } from '../services/connectionService';
 import api from '../services/api';
 import { toast } from 'react-hot-toast';
+
+// Define WebSocket callbacks interface
+interface WebSocketCallbacks {
+  onMessage: (message: Message) => void;
+  onTyping: (senderId: number, isTyping: boolean) => void;
+  onStatus?: (userId: number, status: string) => void;
+  onError: (errorMsg: string) => void;
+  onHistory: (history: Message[]) => void;
+}
 
 export default function ChatPage() {
   const { t } = useLanguage();
@@ -178,33 +185,36 @@ export default function ChatPage() {
     const token = accessToken || localStorage.getItem('authToken');
     if (!token) return;
 
+    // Ensure user.id is a number, provide fallback
+    const userId = user?.id || 0;
+
     wsService.current = new WebSocketService(
       selectedConversation.id,
       token,
-      user?.id || 0,
+      userId,
       {
-        onMessage: (message) => {
+        onMessage: (message: Message) => {
           // Process attachments if they exist
           const processedMessage = {
             ...message,
             attachments: message.attachments ||
-              (message.attachment ? [message.attachment] :
-                (message.files ? message.files : []))
+              (message as any).attachment ? [(message as any).attachment] :
+                (message as any).files ? (message as any).files : []
           };
 
           // Add delivered status for own messages sent via WebSocket
-          const senderId = processedMessage.sender_id || processedMessage.sender;
+          const senderId = processedMessage.sender_id || undefined; // Use undefined as fallback
           const messageWithStatus = Number(senderId) === Number(user?.id)
             ? { ...processedMessage, sender_id: senderId, delivered_at: new Date().toISOString() }
             : { ...processedMessage, sender_id: senderId };
 
-          setMessages(prev => [...prev, messageWithStatus]);
+          setMessages(prev => [...prev, messageWithStatus as Message]);
           scrollToBottom();
 
           // Refresh conversation list to update last message
           loadConversations();
         },
-        onTyping: (senderId, isTyping) => {
+        onTyping: (senderId: number, isTyping: boolean) => {
           setTypingUsers(prev => {
             const newSet = new Set(prev);
             if (isTyping) {
@@ -215,26 +225,15 @@ export default function ChatPage() {
             return newSet;
           });
         },
-        onStatus: (userId: number, status: string) => {
-          setOnlineUsers(prev => {
-            const newSet = new Set(prev);
-            if (status === 'online') {
-              newSet.add(userId);
-            } else {
-              newSet.delete(userId);
-            }
-            return newSet;
-          });
-        },
-        onError: (errorMsg) => {
+        onError: (errorMsg: string) => {
           setError(errorMsg);
           setTimeout(() => setError(null), 5000);
         },
-        onHistory: (history) => {
+        onHistory: (history: Message[]) => {
           setMessages(history);
           scrollToBottom();
         }
-      }
+      } as WebSocketCallbacks
     );
 
     wsService.current.connect();
@@ -242,7 +241,7 @@ export default function ChatPage() {
     return () => {
       wsService.current?.disconnect();
     };
-  }, [selectedConversation, accessToken, scrollToBottom]);
+  }, [selectedConversation, accessToken, scrollToBottom, user?.id]);
 
   // Mark messages as read when conversation is selected
   useEffect(() => {
@@ -338,6 +337,7 @@ export default function ChatPage() {
   };
 
   const handleDeleteMessage = async () => {
+    if (msgToDeleteId === null) return;
     try {
       await chatService.deleteMessage(msgToDeleteId);
       setMessages(prev => prev.filter(m => m.id !== msgToDeleteId));
@@ -613,7 +613,7 @@ export default function ChatPage() {
       const memberArray = newGroupMembers.split(',').map(m => m.trim()).filter(Boolean);
       
       // Convert mobile numbers to user IDs
-      const groupMembers = [];
+      const groupMembersList = [];
       for (const member of memberArray) {
         if (/^\d+$/.test(member)) {
           // This is a mobile number, search for user ID
@@ -623,7 +623,7 @@ export default function ChatPage() {
             
             if (suggestions.length > 0) {
               const matchedUser = suggestions[0];
-              groupMembers.push(matchedUser.id);
+              groupMembersList.push(matchedUser.id);
             } else {
               throw new Error(`User not found for mobile number: ${member}`);
             }
@@ -634,14 +634,14 @@ export default function ChatPage() {
           // This is already a user ID, convert to number
           const userId = parseInt(member);
           if (!isNaN(userId)) {
-            groupMembers.push(userId);
+            groupMembersList.push(userId);
           } else {
             throw new Error(`Invalid member format: ${member}`);
           }
         }
       }
 
-      const conversation = await chatService.createGroupConversation(newGroupName, groupMembers);
+      const conversation = await chatService.createGroupConversation(newGroupName, groupMembersList);
       setConversations(prev => [conversation, ...prev]);
       setSelectedConversation(conversation);
       setShowNewChatModal(false);
@@ -691,7 +691,7 @@ export default function ChatPage() {
   const handleUnblockFromList = async (userId: number) => {
     try {
       await chatService.unblockUser(userId);
-      setBlockedUsers(prev => prev.filter(u => u.user_id !== userId || u.blocked_user !== userId));
+      setBlockedUsers(prev => prev.filter(u => u.user_id !== userId && u.blocked_user !== userId));
 
       if (selectedConversation && selectedConversation.room_type === 'direct') {
         const target = selectedConversation.participants.find(p => p.id !== user?.id);
@@ -910,10 +910,7 @@ export default function ChatPage() {
 
                       return (
                         <>
-                          {/* <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                          <span className={isOnline ? 'text-green-500' : 'text-gray-500'}>
-                            {typingUsers.has(Number(other?.id)) ? 'typing...' : (isOnline ? 'online' : 'offline')}
-                          </span> */}
+                          {/* Commented out online status display */}
                         </>
                       );
                     })()}
@@ -999,7 +996,10 @@ export default function ChatPage() {
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#e5ddd5]">
-              {console.log('Rendering messages:', messages.length, messages)}
+              {(() => {
+                console.log('Rendering messages:', messages.length, messages);
+                return null;
+              })()}
               {messages && messages.map((message, index) => {
                 const currentSenderId = message.sender_id ? Number(message.sender_id) : null;
                 const nextSenderId = messages[index + 1] ? (messages[index + 1].sender_id ? Number(messages[index + 1].sender_id) : null) : null;
@@ -1083,7 +1083,7 @@ export default function ChatPage() {
                             />
                             <div className="flex justify-end space-x-2">
                               <button onClick={() => setEditingMessageId(null)} className="text-xs text-gray-500">Cancel</button>
-                              <button onClick={() => handleEditMessage(message.id)} className="text-xs font-bold text-orange-600">Save</button>
+                              <button onClick={handleEditMessage} className="text-xs font-bold text-orange-600">Save</button>
                             </div>
                           </div>
                         ) : (

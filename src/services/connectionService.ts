@@ -257,20 +257,28 @@ class ConnectionService {
 
   // GET /api/genealogy/invitations/pending/ - Get pending connection requests (received)
   async getReceivedRequests(): Promise<GenealogyInvitation[]> {
-    const cacheKey = createCacheKey('invitations_received');
-    return withCache(cacheKey, async () => {
-      const response = await api.get("/api/genealogy/invitations/pending/");
-      return response.data.invitations || [];
-    }, 2 * 60 * 1000); // 2 minutes cache
+    const cacheKey = createCacheKey("invitations_received");
+    return withCache(
+      cacheKey,
+      async () => {
+        const response = await api.get("/api/genealogy/invitations/pending/");
+        return response.data.invitations || [];
+      },
+      2 * 60 * 1000
+    ); // 2 minutes cache
   }
 
   // GET /api/genealogy/invitations/sent/ - Get sent invitations
   async getSentRequests(): Promise<SentInvitationsResponse> {
-    const cacheKey = createCacheKey('invitations_sent');
-    return withCache(cacheKey, async () => {
-      const response = await api.get("/api/genealogy/invitations/sent/");
-      return response.data;
-    }, 2 * 60 * 1000); // 2 minutes cache
+    const cacheKey = createCacheKey("invitations_sent");
+    return withCache(
+      cacheKey,
+      async () => {
+        const response = await api.get("/api/genealogy/invitations/sent/");
+        return response.data;
+      },
+      2 * 60 * 1000
+    ); // 2 minutes cache
   }
 
   // POST /api/genealogy/invitations/create/ - Send invitation
@@ -279,10 +287,10 @@ class ConnectionService {
       invited_user_id: userId,
       relation_code: relationCode,
     });
-    
+
     // Clear caches since data changed
     this.clearInvitationCaches();
-    
+
     return response.data;
   }
 
@@ -290,10 +298,12 @@ class ConnectionService {
   async getInvitationWithPath(invitationId: number): Promise<any> {
     try {
       // Use POST as the backend expects a POST request for this endpoint
-      const response = await api.get(`/api/genealogy/invitations/${invitationId}/view-with-path/`);
+      const response = await api.get(
+        `/api/genealogy/invitations/${invitationId}/view-with-path/`
+      );
       return response.data;
     } catch (error) {
-      console.error('Error fetching invitation with path:', error);
+      console.error("Error fetching invitation with path:", error);
       throw error;
     }
   }
@@ -302,17 +312,17 @@ class ConnectionService {
     const response = await api.post(
       `/api/genealogy/invitations/${invitationId}/accept/`
     );
-    
+
     // Clear caches since data changed
     this.clearInvitationCaches();
-    
+
     return response.data;
   }
 
   // POST /api/genealogy/invitations/:id/reject/ - Reject invitation
   async rejectRequest(invitationId: number): Promise<void> {
     await api.post(`/api/genealogy/invitations/${invitationId}/reject/`);
-    
+
     // Clear caches since data changed
     this.clearInvitationCaches();
   }
@@ -324,17 +334,17 @@ class ConnectionService {
     const response = await api.post(
       `/api/genealogy/invitations/sent/${invitationId}/cancel/`
     );
-    
+
     // Clear caches since data changed
     this.clearInvitationCaches();
-    
+
     return response.data;
   }
 
   // Helper method to clear invitation-related caches
   private clearInvitationCaches(): void {
-    cacheService.clear('invitations_received');
-    cacheService.clear('invitations_sent');
+    cacheService.clear("invitations_received");
+    cacheService.clear("invitations_sent");
   }
 
   // DELETE /api/connections/:id/ - Remove connection (unfriend)

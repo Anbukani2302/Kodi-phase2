@@ -1,4 +1,4 @@
-import api from './api';
+import api from "./api";
 
 export interface UserProfile {
   id?: number;
@@ -16,8 +16,7 @@ export interface UserProfile {
   gender?: string;
   email?: string;
   phone?: string;
-  family_name? : string
-
+  family_name?: string;
 
   // Step 2 - Private
   dateofbirth?: string;
@@ -67,16 +66,15 @@ export interface AuthResponse {
 }
 
 class AuthService {
-
   async requestOTP(phoneNumber: string): Promise<{ message: string }> {
-    const response = await api.post('/api/auth/request-otp/', {
+    const response = await api.post("/api/auth/request-otp/", {
       phone_number: phoneNumber,
     });
     return response.data;
   }
 
   async verifyOTP(mobileNumber: string, otp: string): Promise<AuthResponse> {
-    const response = await api.post('/api/auth/verify-otp/', {
+    const response = await api.post("/api/auth/verify-otp/", {
       mobile_number: mobileNumber,
       otp,
     });
@@ -84,19 +82,21 @@ class AuthService {
   }
 
   async refreshToken(refreshToken: string): Promise<{ access: string }> {
-    const response = await api.post('/api/auth/refresh-token/', {
+    const response = await api.post("/api/auth/refresh-token/", {
       refresh: refreshToken,
     });
     return response.data;
   }
 
   async getMyProfile(): Promise<UserProfile> {
-    const response = await api.get('/api/profiles/me/');
+    const response = await api.get("/api/profiles/me/");
     return response.data;
   }
 
   // SINGLE updateMyProfile (FormData version)
-  async updateMyProfile(profileData: Partial<UserProfile>): Promise<UserProfile> {
+  async updateMyProfile(
+    profileData: Partial<UserProfile>
+  ): Promise<UserProfile> {
     const formData = new FormData();
 
     Object.entries(profileData).forEach(([key, value]) => {
@@ -105,33 +105,29 @@ class AuthService {
       }
     });
 
-    const response = await api.put(
-      '/api/profiles/me/',
-      formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      }
-    );
+    const response = await api.put("/api/profiles/me/", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
 
     return response.data;
   }
 
   logout(): void {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('user');
-    localStorage.removeItem('currentUserName');
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("user");
+    localStorage.removeItem("currentUserName");
     sessionStorage.clear();
   }
 
   isAuthenticated(): boolean {
-    return !!localStorage.getItem('authToken');
+    return !!localStorage.getItem("authToken");
   }
 
   getCurrentUser() {
-    const userStr = localStorage.getItem('user');
+    const userStr = localStorage.getItem("user");
     return userStr ? JSON.parse(userStr) : null;
   }
 }
