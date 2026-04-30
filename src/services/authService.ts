@@ -37,8 +37,8 @@ export interface UserProfile {
   familyname4?: string;
   familyname5?: string;
   preferred_language?: string;
-  religion?: string;
-  caste?: string;
+  lifestyle?: string;
+  familyname8?: string;
 
   // System fields
   created_at?: string;
@@ -101,6 +101,12 @@ class AuthService {
 
     Object.entries(profileData).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
+        // Only append image to FormData if it's a File object (actual file upload)
+        // Skip if it's a string (URL) - the backend will handle existing images
+        if (key === 'image' && typeof value === 'string') {
+          // Skip string image URLs - they represent existing images
+          return;
+        }
         formData.append(key, value as any);
       }
     });

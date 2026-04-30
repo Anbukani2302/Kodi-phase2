@@ -47,15 +47,6 @@ import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
 import api, { BASE_URL } from '../services/api';
 
-// Import images
-import relationImg from '../images/relation.png';
-import kalacharamImg from '../images/kalacharam.png';
-import kalacharam1Img from '../images/kalacharam1.png';
-import mapImg from '../images/map.png';
-import connectionImg from '../images/connection.png';
-import connectImg from '../images/connect.png';
-import settingImg from '../images/setting.png';
-import relation1Img from '../images/relation1.png';
 
 // ============ TYPES ============
 
@@ -64,6 +55,7 @@ interface UniverseNode {
   name: string;
   relation: string;
   relationLabel?: string;
+  relationIndex?: number;
   arrowLabel?: string;
   level: number;
   parentId: string | null;
@@ -370,7 +362,7 @@ const getRelationLabel = (relation: string, isTamil: boolean = false): string =>
 
 const getArrowLabel = (parentGender: string, relation: string, relationLabel: string, isTamil: boolean = false): string => {
   const meLabel = getMeLabel(parentGender, relation, isTamil);
-  return `${relationLabel} - ${meLabel}`;
+  return `${meLabel} - ${relationLabel}`;
 };
 
 // ============ ROUGH CIRCLE HELPER ============
@@ -528,7 +520,7 @@ const GenealogyPage = () => {
     id => nodes[id].id === "root"
   );
   // Profile and person state
-  const [profile, setProfile] = useState<Partial<UserProfile>>({
+  const [profile, setProfile] = useState<Partial<UserProfile> & { religion?: string; caste?: string }>({
     firstname: '',
     lastname: '',
     email: '',
@@ -619,6 +611,7 @@ const GenealogyPage = () => {
   const [pathLength, setPathLength] = useState<number>(0);
   const [isPathNavigation, setIsPathNavigation] = useState<boolean>(false);
   const [pathNodes, setPathNodes] = useState<any[]>([]);
+  const [showNavigationSteppers, setShowNavigationSteppers] = useState(false);
 
   // Two-way relation states
   const [isTwoWayMode, setIsTwoWayMode] = useState(false);
@@ -763,12 +756,11 @@ const GenealogyPage = () => {
 
   // Top buttons
   const topButtons = [
-    { id: 1, label: isTamil ? 'உறவினர்\nபட்டியல்' : 'Relative\nList', image: relation1Img },
-    { id: 2, label: isTamil ? 'பதிவிறக்க\nவசதிகள்' : 'Download\nOptions', image: connectImg },
-    { id: 3, label: isTamil ? 'கலாச்சார\nபெட்டகம்' : 'Cultural\nBox', image: kalacharamImg },
-    { id: 4, label: isTamil ? 'இருவருக்கான\nஉறவுமுறை\nபற்றி அறிய' : 'Know\nRelationship', image: mapImg },
-    { id: 5, label: isTamil ? 'அரட்டை [Chat]' : 'Chat', image: connectionImg },
-    { id: 6, label: isTamil ? 'அமைப்பு\n[Settings]' : 'Settings', image: settingImg },
+    { id: 1, label: isTamil ? 'உறவினர்\nபட்டியல்' : 'Relative\nList', image: "/images/relation1.png" },
+    { id: 2, label: isTamil ? 'பதிவிறக்க\nவசதிகள்' : 'Download\nOptions', image: "/images/connect.png" },
+    { id: 3, label: isTamil ? 'கலாச்சார\nபெட்டகம்' : 'Cultural\nBox', image: "/images/kalacharam.png" },
+    { id: 4, label: isTamil ? 'இருவருக்கான\nஉறவுமுறை\nபற்றி அறிய' : 'Know\nRelationship', image: "/images/map.png" },
+    { id: 5, label: isTamil ? 'அரட்டை [Chat]' : 'Chat', image: "/images/connection.png" },
   ];
 
   // ============ EFFECTS ============
@@ -1151,6 +1143,8 @@ const GenealogyPage = () => {
             }
           });
 
+          setShowNavigationSteppers(true);
+
           toast.success(`${personName} loaded`, { id: 'next-flower' });
 
           // Check if this node is the target of path navigation
@@ -1216,7 +1210,7 @@ const GenealogyPage = () => {
 
       if (!nextNode || !nextNode.person_id) {
         console.error("Next node not found in response");
-        toast.error("Path information missing");
+        toast.error(t("pathInfoMissing"));
         setShowModal(false);
         return;
       }
@@ -1283,6 +1277,7 @@ const GenealogyPage = () => {
       });
 
       setActiveParentId(selectedNode.id);
+      setShowNavigationSteppers(true);
       setShowModal(false);
 
       toast.success(isTamil ? `${nextNode.person_name} காட்டப்படுகிறது` : `Showing ${nextNode.person_name}`, { id: 'expand-node' });
@@ -1449,7 +1444,47 @@ const GenealogyPage = () => {
     let currentNode: UniverseNode | null = node;
 
     while (currentNode && currentNode.parentId && currentNode.id !== 'root') {
-      path.unshift(currentNode.relation.toLowerCase());
+      let relationToAdd = currentNode.relation.toLowerCase();
+
+      // For Ashramam Member nodes, use the actual relation (ANNA, AKKA, etc.)
+      if (currentNode.relation === 'Ashramam Member') {
+        const tamilRelation = (currentNode.relationLabel || currentNode.arrowLabel || '');
+
+        // Convert Tamil to English
+        const tamilToEnglishMap: { [key: string]: string } = {
+          'தாத்தா': 'thatha',
+          'பாட்டி': 'paati',
+          'பெரியப்பா': 'periyappa',
+          'பெரியம்மா': 'periyamma',
+          'சித்தப்பா': 'chithappa',
+          'சித்தி': 'chithi',
+          'மாமா': 'mama',
+          'அத்தை': 'athai',
+          'அத்தான்': 'athan',
+          'அண்ணி': 'anni',
+          'கொழுந்தனார்': 'kolunthanar',
+          'கொழுந்தியாள்': 'kolunthiyazh',
+          'மருமகன்': 'marumagan',
+          'மருமகள்': 'marumagal',
+          'பேரன்': 'peran',
+          'பேத்தி': 'petthi',
+          'மைத்துனர்': 'maithunar',
+          'மகன்': 'magan',
+          'மகள்': 'maghazh',
+          'அண்ணன்': 'anna',
+          'அக்கா': 'akka',
+          'தம்பி': 'thambi',
+          'தங்கை': 'thangai'
+        };
+
+        relationToAdd = tamilToEnglishMap[tamilRelation] || tamilRelation.toLowerCase();
+        console.log("Ashramam Member - Tamil:", tamilRelation, "→ English:", relationToAdd);
+      }
+
+      // Skip adding 'ashramam' to path for Ashramam Member nodes
+      if (relationToAdd !== 'ashramam') {
+        path.unshift(relationToAdd);
+      }
       currentNode = nodes[currentNode.parentId];
     }
     return path;
@@ -1658,7 +1693,7 @@ const GenealogyPage = () => {
         initial={{ opacity: 0, y: 10, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 10, scale: 0.95 }}
-        className="fixed z-1000 border border-gray-300 rounded-xl shadow-2xl p-4 min-w-70max-w-[320px] pointer-events-none backdrop-blur-sm bg-white/95"
+        className="fixed z-1000 border border-gray-300 rounded-xl shadow-2xl p-4 min-w-[280px] max-w-[320px] pointer-events-none backdrop-blur-sm bg-white/95"
         style={tooltipStyle}
         key={hoverInfo.nodeId || 'hover-tooltip'}
       >
@@ -1850,7 +1885,7 @@ const GenealogyPage = () => {
             }
           } catch (e) {
             console.error("Error in next flow:", e);
-            toast.error("Failed to load connected person");
+            toast.error(t("failedLoadConnected"));
             expandNode(targetNode.id, targetNode.gender);
           }
         } else if (targetNode.personId) {
@@ -2123,7 +2158,7 @@ const GenealogyPage = () => {
       baseRelations.forEach(relType => {
         const matches = groupedApi[relType] || [];
         if (matches.length > 0) {
-          matches.forEach(match => {
+          matches.forEach((match, idx) => {
             const isOutgoing = String(match.from_person) === String(sourceNode.personId);
             const personId = isOutgoing ? match.to_person : match.from_person;
             const personName = isOutgoing ? match.to_person_name : match.from_person_name;
@@ -2146,6 +2181,7 @@ const GenealogyPage = () => {
               name: (personName || '').toUpperCase(),
               relation: relType,
               relationLabel: relationLabel,
+              relationIndex: idx + 1, // Add index for multiple sisters/brothers/etc
               arrowLabel: (match as any).arrow_label || (match as any).relation_label?.arrow_label,
               gender: ['Mother', 'Wife', 'Elder Sister', 'Younger Sister', 'Daughter'].includes(relType) ? 'F' : 'M',
               personId: personId,
@@ -2322,7 +2358,7 @@ const GenealogyPage = () => {
       baseRelations.forEach(relType => {
         const matches = groupedApi[relType] || [];
         if (matches.length > 0) {
-          matches.forEach(match => {
+          matches.forEach((match, idx) => {
             const isNextFlowItem = (match as any).person_id !== undefined;
             let personId, personName;
 
@@ -2357,6 +2393,7 @@ const GenealogyPage = () => {
               name: (personName || '').toUpperCase(),
               relation: relType,
               relationLabel: relationLabel,
+              relationIndex: idx + 1, // Add index for next flow items too
               arrowLabel: (match as any).arrow_label || (match as any).relation_label?.arrow_label,
               gender: ['Mother', 'Wife', 'Elder Sister', 'Younger Sister', 'Daughter'].includes(relType) ? 'F' : 'M',
               personId: personId,
@@ -2959,7 +2996,7 @@ const GenealogyPage = () => {
       const totalCount = extraCount + (hasStandardOptions ? standardOptionsData.length : 0) + 1; // +1 for ADD button
 
       const baseAshramamRadius = RADIUS_BASE * 0.75;
-      const radius = totalCount > 20 ? baseAshramamRadius * (1 + (totalCount - 20) * 0.05) : baseAshramamRadius;
+      const radius = Math.max(baseAshramamRadius, totalCount * 16); // Maintain consistent gap by scaling radius linearly with count
 
       let currentIndex = 0;
 
@@ -3032,6 +3069,10 @@ const GenealogyPage = () => {
       const angle = (currentIndex * (360 / totalCount)) * (Math.PI / 180);
       const addNodeId = `${nodeId}-add-button`;
 
+      // Position ADD button back into the circular arrangement as the last node
+      const addXPos = node.position.x + Math.cos(angle) * radius;
+      const addYPos = node.position.y + Math.sin(angle) * radius;
+
       nextNodes[addNodeId] = {
         id: addNodeId,
         name: 'ADD +',
@@ -3041,8 +3082,8 @@ const GenealogyPage = () => {
         level: node.level + 1,
         parentId: nodeId,
         position: {
-          x: node.position.x + Math.cos(angle) * radius,
-          y: node.position.y + Math.sin(angle) * radius
+          x: addXPos,
+          y: addYPos
         },
         isOpen: false,
         gender: 'M',
@@ -3261,6 +3302,7 @@ const GenealogyPage = () => {
             setTransform({ x: 0, y: 0, scale: 0.8 });
 
             setPhoneNumber('');
+            setSearchMobile('');
             setMobileSearchResults([]);
             setShowPhoneModal(false);
             setShowModal(false);
@@ -3450,13 +3492,15 @@ const GenealogyPage = () => {
       return;
     }
 
-    // 🛑 CRITICAL: If this is the LAST NODE - show path info modal ONLY
+    /* 
+    // Commented out to allow last node to show the full modal with edit/connect options
     if (isLastNode) {
       console.log("🎯 LAST NODE clicked - showing path info ONLY");
       setSelectedNode(node);
       setShowPathInfoModal(true);
-      return; // ✅ MUST return - NO modal with buttons
+      return;
     }
+    */
 
     // If this is the blinking node (my father) - show only Next Flower
     if (isBlinkingNode) {
@@ -3665,7 +3709,7 @@ const GenealogyPage = () => {
       console.log("Resolved parent personId for add_relative_action:", parentPersonId, "(parentNodeId:", parentNodeId, ")");
 
       if (!parentPersonId) {
-        toast.error('Cannot find parent person. Please try again.');
+        toast.error(t('cannotFindParent'));
         return;
       }
 
@@ -3784,7 +3828,7 @@ const GenealogyPage = () => {
         setShowNameEditModal(false);
         setShowModal(false);
       } else {
-        toast.error('Failed to add person');
+        toast.error(t('failedAddPerson'));
         setNodes(prev => ({
           ...prev,
           [selectedNode.id]: {
@@ -3816,7 +3860,7 @@ const GenealogyPage = () => {
     if (!selectedNode) return;
 
     if (!phoneNumber.trim()) {
-      toast.error('Please enter a mobile number');
+      toast.error(t('pleaseEnterMobile'));
       return;
     }
 
@@ -3824,13 +3868,13 @@ const GenealogyPage = () => {
     const cleanedPhone = phoneNumber.replace(/\D/g, '');
 
     if (cleanedPhone.length !== 10 || !phoneRegex.test(cleanedPhone)) {
-      toast.error('Please enter a valid 10 digit mobile number');
+      toast.error(t('invalidMobileLength'));
       return;
     }
 
     const validPrefixes = ['6', '7', '8', '9'];
     if (!validPrefixes.includes(cleanedPhone.charAt(0))) {
-      toast.error('Please enter a valid Indian mobile number starting with 6, 7, 8, or 9');
+      toast.error(t('invalidMobilePrefix'));
       return;
     }
 
@@ -3851,7 +3895,7 @@ const GenealogyPage = () => {
           personId = extractedId;
           console.log("Extracted personId from node ID:", personId);
         } else {
-          toast.error('Cannot find valid person information. Please save the name first.');
+          toast.error(t('cannotFindPersonInfo'));
           setIsSendingInvitation(false);
           return;
         }
@@ -3859,7 +3903,7 @@ const GenealogyPage = () => {
 
       if (!personId || personId <= 0) {
         console.error("Invalid personId detected:", personId);
-        toast.error('Invalid person information. The person may not be saved yet.');
+        toast.error(t('invalidPersonInfo'));
         setIsSendingInvitation(false);
         return;
       }
@@ -3941,7 +3985,7 @@ const GenealogyPage = () => {
       });
 
       if (error.response?.status === 404) {
-        toast.error('Person not found. Please save the name first before sending invitation.');
+        toast.error(t('personNotFoundSaveFirst'));
       } else if (error.response?.status === 400) {
         const errorData = error.response.data;
         const isAlreadyConnected = errorData?.status === 'already_connected' ||
@@ -3997,7 +4041,7 @@ const GenealogyPage = () => {
       console.log("Resolved parent personId for add_relative_action:", parentPersonId, "(parentNodeId:", parentNodeId, ")");
 
       if (!parentPersonId) {
-        toast.error('Cannot find parent person. Please try again.');
+        toast.error(t('cannotFindParent'));
         return;
       }
 
@@ -4030,11 +4074,11 @@ const GenealogyPage = () => {
         'mother': 'add_mother',
 
         // Elder Siblings
-        'அண்ணன்': 'add_anna',
-        'anna': 'add_anna',
+        'அண்ணன்': 'add_elder_brother',
+        'anna': 'add_elder_brother',
         'elder brother': 'add_elder_brother',
-        'அக்கா': 'add_akka',
-        'akka': 'add_akka',
+        'அக்கா': 'add_elder_sister',
+        'akka': 'add_elder_sister',
         'elder sister': 'add_elder_sister',
 
         // Younger Siblings
@@ -4046,11 +4090,11 @@ const GenealogyPage = () => {
         'younger sister': 'add_younger_sister',
 
         // Children
-        'மகன்': 'add_magan',
-        'magan': 'add_magan',
+        'மகன்': 'add_son',
+        'magan': 'add_son',
         'son': 'add_son',
-        'மகள்': 'add_maghazh',
-        'maghazh': 'add_maghazh',
+        'மகள்': 'add_daughter',
+        'maghazh': 'add_daughter',
         'daughter': 'add_daughter',
 
         // Spouse
@@ -4169,7 +4213,7 @@ const GenealogyPage = () => {
           'add_periyappa', 'add_chithappa', 'add_periyamma', 'add_chithi',
           'add_mama', 'add_athai', 'add_athan', 'add_anni',
           'add_kolunthanar', 'add_kolunthiyazh', 'add_marumagan', 'add_marumagal',
-          'add_peran', 'add_petthi', 'add_anna', 'add_akka',
+          'add_peran', 'add_petthi', 'add_anna', 'add_elder_sister',
           'add_thambi', 'add_thangai', 'add_magan', 'add_maghazh'
         ];
 
@@ -4236,7 +4280,7 @@ const GenealogyPage = () => {
         setShowAddPeopleModal(false);
         setShowModal(false);
       } else {
-        toast.error('Failed to add person');
+        toast.error(t('failedAddPerson'));
       }
     } catch (error: any) {
       console.error('Error adding person:', error);
@@ -5277,21 +5321,22 @@ const GenealogyPage = () => {
                   <input
                     type="text"
                     value={searchMobile}
-                    onChange={(e) => setSearchMobile(e.target.value)}
+                    onChange={(e) => setSearchMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         if (searchSuggestions.length > 0) {
                           handleSuggestionClick(searchSuggestions[0]);
                         } else {
-                          handleMobileSearch();
+                          handleMobileSearch(searchMobile);
                         }
                       }
                     }}
                     placeholder={isTamil ? 'மொபைல் எண் தேடல்...' : 'Search Mobile No...'}
                     className="py-2.5 px-3 w-40 md:w-64 bg-transparent outline-none text-sm font-semibold text-gray-700 placeholder:text-gray-400 placeholder:font-normal"
+                    maxLength={10}
                   />
                   <button
-                    onClick={() => handleMobileSearch()}
+                    onClick={() => handleMobileSearch(searchMobile)}
                     disabled={isSearching || !searchMobile.trim()}
                     className={`
                     h-full px-5 py-2.5 text-sm font-bold transition-all
@@ -5338,37 +5383,44 @@ const GenealogyPage = () => {
           </div>
         </div>
 
-        {/* Navigation Ribbon / Breadcrumbs */}
-        {navigationHistory.length > 1 && (
-          <div className="flex items-center bg-white/80 backdrop-blur-sm border border-blue-100 rounded-xl shadow-lg px-2 py-1.5 overflow-x-auto scrollbar-hide max-w-full animate-fadeIn border-l-4 border-l-blue-500">
+        {/* Navigation Ribbon / Breadcrumbs - Moved below search */}
+        {navigationHistory.length > 1 && showNavigationSteppers && (
+          <div className="mt-4 flex items-center bg-white/90 backdrop-blur-sm border border-blue-100 rounded-2xl shadow-xl px-2 py-2 overflow-x-auto scrollbar-hide max-w-full animate-fadeIn border-l-4 border-l-blue-500">
             {navigationHistory.map((item, index) => (
               <React.Fragment key={`${item.id}-${index}`}>
                 <button
-                  onClick={() => navigateToHistoryItem(item, index)}
-                  className={`
-                  flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all whitespace-nowrap
-                  ${index === navigationHistory.length - 1
-                      ? 'bg-blue-50 text-blue-700 font-bold scale-105 shadow-xs'
-                      : 'text-gray-500 hover:bg-gray-100 hover:text-blue-600'}
-                `}
+                  onClick={() => {
+                    navigateToHistoryItem(item, index);
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all whitespace-nowrap group relative ${index === navigationHistory.length - 1
+                    ? 'bg-blue-50 text-blue-700 font-black scale-105 shadow-sm'
+                    : 'text-gray-500 hover:bg-gray-100 hover:text-blue-600'
+                    }`}
                 >
-                  <div className={`
-                  w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-black
-                  ${index === navigationHistory.length - 1
+                  <div
+                    className={`w-6 h-6 flex items-center justify-center rounded-lg text-[10px] font-black shadow-inner ${index === navigationHistory.length - 1
                       ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-500'}
-                `}>
+                      : 'bg-gray-200 text-gray-500'
+                      }`}
+                  >
                     {index + 1}
                   </div>
-                  <span className="text-xs uppercase tracking-tighter">
-                    {index === 0 ? (isTamil ? 'முதல் தலைமுறை' : '1st Gen') :
-                      index === navigationHistory.length - 1 ? (isTamil ? 'தற்போது' : 'Current') :
-                        (isTamil ? `${index + 1}-ம் தலைமுறை` : `Gen ${index + 1}`)}
+                  <span className="text-[10px] uppercase tracking-tighter font-bold">
+                    {index === 0
+                      ? (isTamil ? 'முதல் தலைமுறை' : '1st Gen')
+                      : index === navigationHistory.length - 1
+                        ? (isTamil ? 'தற்போது' : 'Current')
+                        : (isTamil ? `${index + 1}-ம் தலைமுறை` : `Gen ${index + 1}`)}
                   </span>
+
+                  {/* Hover Tooltip */}
+                  <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap border border-slate-700 shadow-xl z-20">
+                    {item.name}
+                  </div>
                 </button>
                 {index < navigationHistory.length - 1 && (
-                  <div className="text-gray-300 mx-0.5">
-                    <ArrowRight size={12} />
+                  <div className="text-gray-300 mx-1">
+                    <ArrowRight size={14} />
                   </div>
                 )}
               </React.Fragment>
@@ -5393,7 +5445,7 @@ const GenealogyPage = () => {
                 <div className="w-full h-full flex items-stretch">
                   <div className="w-1/2 relative overflow-hidden border-r border-gray-100">
                     <img
-                      src={relationImg}
+                      src={"/images/relation.png"}
                       alt="Relative List Left"
                       className="w-full h-full object-contain hover:scale-105 transition-transform duration-500"
                     />
@@ -5404,7 +5456,7 @@ const GenealogyPage = () => {
 
                   <div className="w-1/2 relative overflow-hidden">
                     <img
-                      src={relation1Img}
+                      src={"/images/relation1.png"}
                       alt="Relative List Right"
                       className="w-full h-full object-contain hover:scale-105 transition-transform duration-500"
                     />
@@ -5417,7 +5469,7 @@ const GenealogyPage = () => {
                 <div className="w-full h-full flex">
                   <div className="flex-1 relative overflow-hidden">
                     <img
-                      src={kalacharamImg}
+                      src={"/images/kalacharam.png"}
                       alt="Cultural Box 1"
                       className="w-full h-full object-contain hover:scale-105 transition-transform duration-500"
                     />
@@ -5428,7 +5480,7 @@ const GenealogyPage = () => {
 
                   <div className="flex-1 relative overflow-hidden border-l border-white/20">
                     <img
-                      src={kalacharam1Img}
+                      src={"/images/kalacharam1.png"}
                       alt="Cultural Box 2"
                       className="w-full h-full object-contain hover:scale-105 transition-transform duration-500"
                     />
@@ -5454,7 +5506,6 @@ const GenealogyPage = () => {
                     {activeButtonIndex === 2 && "Explore cultural heritage and traditions"}
                     {activeButtonIndex === 3 && "Discover relationships between two people"}
                     {activeButtonIndex === 4 && "Connect and chat with family members"}
-                    {activeButtonIndex === 5 && "Customize your genealogy experience"}
                   </p>
                 </div>
               </div>
@@ -5718,7 +5769,7 @@ const GenealogyPage = () => {
                 {/* Central vertical line */}
                 <div className="absolute left-1/2 top-2 bottom-2 transform -translate-x-1/2 w-px bg-linear-to-b from-gray-200 via-gray-300 to-gray-200"></div>
 
-                <div className="space-y-8 relative">
+                <div className="space-y-4">
                   {navigationHistory.length > 1 && navigationHistory.map((item, index) => {
                     const isLast = index === navigationHistory.length - 1;
                     const isFirst = index === 0;
@@ -6041,10 +6092,10 @@ const GenealogyPage = () => {
                 <path d="M0,0 L10,5 L0,10 Z" fill="#f1b434" />
               </marker>
               <marker id="ashramam-arrow-start" markerWidth="8" markerHeight="8" refX="0" refY="4" orient="auto">
-                <path d="M8,0 L0,4 L8,8 Z" fill="#9b59b6" />
+                <path d="M8,0 L0,4 L8,8 Z" fill="#c084fc" />
               </marker>
               <marker id="ashramam-arrow-end" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto">
-                <path d="M0,0 L8,4 L0,8 Z" fill="#9b59b6" />
+                <path d="M0,0 L8,4 L0,8 Z" fill="#c084fc" />
               </marker>
               <marker id="existing-arrow-start" markerWidth="10" markerHeight="10" refX="0" refY="5" orient="auto">
                 <path d="M10,0 L0,5 L10,10 Z" fill="#10b981" />
@@ -6104,7 +6155,7 @@ const GenealogyPage = () => {
                     <path
                       d={`M ${x1},${y1} Q ${cx},${cy} ${x2},${y2}`}
                       fill="none"
-                      stroke="#9b59b6"
+                      stroke="#c084fc"
                       strokeWidth="2"
                       strokeDasharray="5,3"
                       markerStart="url(#ashramam-arrow-start)"
@@ -6266,9 +6317,9 @@ const GenealogyPage = () => {
                 node.id === activeParentId ||
                 node.parentId === activeParentId;
 
-              // ============ CHANGED: Root node color to yellow ============
-              let fillColor = isRoot ? "#fbbf24" : "#9ca3af"; // Yellow for root
-              let strokeColor = isRoot ? "#f59e0b" : "#6b7280"; // Amber border for root
+              // ============ CHANGED: Root node color to yellow, others dull gray ============
+              let fillColor = isRoot ? "#fbbf24" : "#e5e7eb"; // Dull gray for non-root placeholders
+              let strokeColor = isRoot ? "#f59e0b" : "#cbd5e1"; // Faded border for placeholders
 
               // Order matters: check conditions in correct priority
               if (isBlinking) {
@@ -6293,27 +6344,21 @@ const GenealogyPage = () => {
               })) {
                 fillColor = "#ef4444";
                 strokeColor = "#dc2626";
-              } else if (node.image && node.image !== 'null') {
-                fillColor = "#10b981";
-                strokeColor = "#059669";
-              } else if (node.isUpdated) {
-                // If it's an updated Ashramam Leaf, the user wants it pink
-                if (isAshramamLeaf) {
-                  fillColor = "#ec4899"; // Pink
-                  strokeColor = "#be185d";
-                } else {
-                  fillColor = "#10b981";
-                  strokeColor = "#059669";
-                }
-              } else if (isAshramam) {
-                fillColor = "#9b59b6";
-                strokeColor = "#8e44ad";
-              } else if (isAshramamLeaf) {
-                fillColor = "#3498db";
+              } else if (node.isConnected) {
+                fillColor = "#3498db"; // Blue for connected users
                 strokeColor = "#2980b9";
+              } else if (node.isUpdated) {
+                fillColor = "#10b981"; // Green for updated nodes (name added)
+                strokeColor = "#059669";
+              } else if (isAshramam) {
+                fillColor = "#d8b4fe"; // Light purple (Violet 300)
+                strokeColor = "#c084fc"; // Violet 400
+              } else if (isAshramamLeaf) {
+                fillColor = "#f3f4f6"; // Light gray for Ashramam members
+                strokeColor = "#e5e7eb";
               } else if (isAshramamAdd) {
-                fillColor = "#f39c12";
-                strokeColor = "#e67e22";
+                fillColor = "#f3f4f6"; // Light gray for Add button as well
+                strokeColor = "#e5e7eb";
               }
 
               // ============ ROUGH CIRCLE: Replace perfect circles with rough paths ============
@@ -6444,13 +6489,14 @@ const GenealogyPage = () => {
                                   }}
                                 />
                                 <div className="absolute inset-0 bg-black/30 flex flex-col items-center justify-center p-1">
-                                  <div className={`font-black uppercase leading-tight text-center ${isAshramam || isAshramamLeaf || isAshramamAdd || node.isUpdated ? "text-white" : "text-black"}`}
+                                  <div className={`font-black uppercase leading-tight text-center ${node.isConnected || node.isUpdated || isRoot || isBlinking ? "text-white" : "text-black"}`}
                                     style={{
                                       fontSize: `${Math.max(6, 10 * scaleFactor)}px`,
                                       wordBreak: 'break-word',
                                       maxWidth: '100%'
                                     }}>
                                     {isAshramamLeaf || isAshramamAdd ? node.name : (node.isUpdated ? node.name : t(node.name))}
+                                    {node.relationIndex && ` (${node.relationIndex})`}
                                   </div>
                                 </div>
                               </div>
@@ -6459,14 +6505,12 @@ const GenealogyPage = () => {
                             isAshramamAdd ? (
                               <UserPlus
                                 size={isRoot ? 26 : 20}
-                                color="white"
+                                color="black"
                               />
                             ) : node.isUpdated ? (
                               <User
                                 size={isRoot ? 26 : 18}
-                                color={isAshramam || isAshramamLeaf || isAshramamAdd ? "white" :
-                                  node.isUpdated ? "white" :
-                                    isRoot ? "white" : "black"}
+                                color="white"
                               />
                             ) : (
                               <UserPlus
@@ -6476,10 +6520,11 @@ const GenealogyPage = () => {
                               />
                             )
                           )}
-                          <div className={`font-black uppercase leading-tight ${isRoot || isAshramam || isAshramamLeaf || isAshramamAdd || node.isUpdated ?
+                          <div className={`font-black uppercase leading-tight ${node.isConnected || node.isUpdated || isRoot || isBlinking ?
                             "text-white text-[11px]" : "text-black text-[9px]"
                             }`}>
                             {isAshramamLeaf || isAshramamAdd ? node.name : (node.isUpdated ? node.name : t(node.name))}
+                            {node.relationIndex && ` (${node.relationIndex})`}
                           </div>
                         </div>
                       </foreignObject>
@@ -6515,42 +6560,111 @@ const GenealogyPage = () => {
                 <X size={24} />
               </button>
 
-              <h2 className="text-2xl font-bold text-white mb-1 pr-8">{selectedNode.name}</h2>
+              <h2 className="text-2xl font-bold text-white mb-1 pr-8">
+                {selectedNode.name}
+                {selectedNode.relationIndex && ` (${selectedNode.relationIndex})`}
+              </h2>
               <p className="text-slate-400 text-sm mb-6 uppercase tracking-wider font-semibold">{selectedNode.relation}</p>
 
+
               {(() => {
-                // 🛑 SAFETY CHECK: If this is last node, NEVER show buttons
+                // 🛑 SAFETY CHECK: For path navigation, handle intermediate vs last node
                 const lastNodeInPath = pathNodes.length > 0 ? pathNodes[pathNodes.length - 1] : null;
                 const isLastNode = lastNodeInPath &&
                   selectedNode.personId &&
                   Number(selectedNode.personId) === Number(lastNodeInPath?.person_id);
 
-                if (isLastNode) {
-                  console.log("⚠️ Last node reached modal - should not happen, closing");
-                  setShowModal(false);
-                  return null;
+                // If in a path navigation flow, strictly control button visibility
+                if (pathNodes.length > 0) {
+                  if (!isLastNode) {
+                    // Intermediate Node: ONLY show Next Flower
+                    return (
+                      <div className="space-y-3">
+                        {navigationHistory.length > 1 && (
+                          <button
+                            onClick={() => { handleBack(); setShowModal(false); }}
+                            className="w-full py-4 bg-slate-700/50 hover:bg-slate-700 text-white rounded-2xl flex items-center justify-between px-5 transition-all border border-slate-600/50 hover:border-slate-500 mb-2"
+                          >
+                            <span className="flex items-center font-medium">
+                              <ArrowLeft size={18} className="mr-3" />
+                              {isTamil ? 'முந்தைய தலைமுறைக்கு' : 'Previous Generation'}
+                            </span>
+                            <span className="opacity-50">←</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={handleNextFlowerClickForBlinkingNode}
+                          className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors"
+                        >
+                          <span className="flex items-center"><Flower2 size={20} className="mr-3" /> {t('nextFlower')}</span>
+                          <span>→</span>
+                        </button>
+                      </div>
+                    );
+                  } else {
+                    // Last node in flow (தற்போது): ONLY show Edit/Connect/Add, NO Next Flower
+                    return (
+                      <div className="space-y-3">
+                        {navigationHistory.length > 1 && (
+                          <button
+                            onClick={() => { handleBack(); setShowModal(false); }}
+                            className="w-full py-4 bg-slate-700/50 hover:bg-slate-700 text-white rounded-2xl flex items-center justify-between px-5 transition-all border border-slate-600/50 hover:border-slate-500 mb-2"
+                          >
+                            <span className="flex items-center font-medium">
+                              <ArrowLeft size={18} className="mr-3" />
+                              {isTamil ? 'முந்தைய தலைமுறைக்கு' : 'Previous Generation'}
+                            </span>
+                            <span className="opacity-50">←</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={handleNameEditClick}
+                          className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors"
+                        >
+                          <span className="flex items-center">
+                            <Edit size={20} className="mr-3" />
+                            {selectedNode.isUpdated ? t('editName') : t('enterName')}
+                          </span>
+                          <span>→</span>
+                        </button>
+
+                        <button onClick={() => {
+                          setInvitationError(null);
+                          setShowPhoneModal(true);
+                        }} className="w-full py-4 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors">
+                          <span className="flex items-center"><Phone size={20} className="mr-3" /> {t('connect')}</span>
+                          <span>→</span>
+                        </button>
+
+                        <button
+                          onClick={handleAddPeopleClick}
+                          className="w-full py-4 bg-purple-600 hover:bg-purple-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors shadow-lg"
+                        >
+                          <span className="flex items-center">
+                            <UserPlus size={20} className="mr-3" /> {t('addPeople')}
+                          </span>
+                          <span>→</span>
+                        </button>
+                      </div>
+                    );
+                  }
                 }
 
-                const isBlinkingNode = (blinkingNodeId && selectedNode.id === blinkingNodeId) ||
-                  (blinkingPersonId && selectedNode.personId && Number(selectedNode.personId) === Number(blinkingPersonId));
-
-                if (isBlinkingNode) {
-                  return (
-                    <div className="space-y-3">
-                      <button
-                        onClick={handleNextFlowerClickForBlinkingNode}
-                        className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors"
-                      >
-                        <span className="flex items-center"><Flower2 size={20} className="mr-3" /> {t('nextFlower')}</span>
-                        <span>→</span>
-                      </button>
-                    </div>
-                  );
-                }
-
-                // For regular nodes, show all options
+                // Default behavior for normal nodes (not in path flow)
                 return (
                   <div className="space-y-3">
+                    {navigationHistory.length > 1 && (
+                      <button
+                        onClick={() => { handleBack(); setShowModal(false); }}
+                        className="w-full py-4 bg-slate-700/50 hover:bg-slate-700 text-white rounded-2xl flex items-center justify-between px-5 transition-all border border-slate-600/50 hover:border-slate-500 mb-2"
+                      >
+                        <span className="flex items-center font-medium">
+                          <ArrowLeft size={18} className="mr-3" />
+                          {isTamil ? 'முந்தைய தலைமுறைக்கு' : 'Previous Generation'}
+                        </span>
+                        <span className="opacity-50">←</span>
+                      </button>
+                    )}
                     <button
                       onClick={handleNameEditClick}
                       className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors"
@@ -6570,34 +6684,25 @@ const GenealogyPage = () => {
                       <span>→</span>
                     </button>
 
-                    <button
-                      onClick={async () => {
-                        if (selectedNode.isUpdated && selectedNode.personId) {
+                    {(selectedNode.isUpdated && selectedNode.personId) ? (
+                      <button
+                        onClick={async () => {
                           try {
                             const response = await genealogyService.getNextFlow(selectedNode.personId);
-
                             const nextPerson = (response as any).person;
-                            const permissions = (response as any).permissions;
-
                             if (nextPerson) {
                               const personName = (nextPerson.full_name || nextPerson.name || selectedNode.name).toUpperCase();
                               const personGender = nextPerson.gender || 'F';
-
                               buildNodesFromRelationsForNextFlow(response, personGender, selectedNode.id);
-
                               fetchGenerationInfo(nextPerson.id);
-
                               setTransform({
                                 x: -selectedNode.position.x * 0.8,
                                 y: -selectedNode.position.y * 0.8,
                                 scale: 0.8
                               });
-
                               const path = getPathToNode(selectedNode);
                               const calcRelResult = await calculateRelationFromPath(path);
-
                               setActiveParentId(selectedNode.id);
-
                               setNavigationHistory(prev => {
                                 const newHistory = [...prev];
                                 const lastIndex = newHistory.length - 1;
@@ -6611,14 +6716,22 @@ const GenealogyPage = () => {
                                 }
                                 return newHistory;
                               });
-
                               toast.success(`Viewing ${personName}'s tree`);
                             }
                           } catch (e) {
                             console.error("Error in next flow:", e);
-                            toast.error("Failed to load connected person");
+                            toast.error(t("failedLoadConnected"));
                           }
-                        } else {
+                          setShowModal(false);
+                        }}
+                        className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors"
+                      >
+                        <span className="flex items-center"><Flower2 size={20} className="mr-3" /> {t('nextFlower')}</span>
+                        <span>→</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
                           if (selectedNode.relation === 'Ashramam') {
                             expandAshramam(selectedNode.id);
                           } else {
@@ -6630,14 +6743,14 @@ const GenealogyPage = () => {
                             setActiveParentId(selectedNode.id);
                             expandNode(selectedNode.id);
                           }
-                        }
-                        setShowModal(false);
-                      }}
-                      className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors"
-                    >
-                      <span className="flex items-center"><Flower2 size={20} className="mr-3" /> {t('nextFlower')}</span>
-                      <span>→</span>
-                    </button>
+                          setShowModal(false);
+                        }}
+                        className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors"
+                      >
+                        <span className="flex items-center"><Flower2 size={20} className="mr-3" /> {t('nextFlower')}</span>
+                        <span>→</span>
+                      </button>
+                    )}
 
                     <button
                       onClick={handleAddPeopleClick}
@@ -6884,9 +6997,6 @@ const GenealogyPage = () => {
                       ))}
                     </div>
                   )}
-                  <p className="text-slate-500 text-xs mt-2">
-                    {t('enterOtpHint')}
-                  </p>
 
                   {invitationError && (
                     <motion.div
@@ -6940,9 +7050,7 @@ const GenealogyPage = () => {
                   </button>
                 </div>
               </div>
-
-              depth 1 and depth 3 la iruka card la etha clcik pantramo antha id bas epanni api hit aganum
-              resposne vachu modal la antha relative elaame show pannanum            </div>
+            </div>
           </div>
         )}
       </AnimatePresence>
@@ -7371,7 +7479,7 @@ const GenealogyPage = () => {
           </div>
         )}
       </AnimatePresence>
-    </div>
+    </div >
   );
 };
 

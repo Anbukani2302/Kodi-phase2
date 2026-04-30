@@ -515,13 +515,13 @@ export default function ConnectionsPage() {
     try {
       await connectionService.acceptRequest(invitationId);
       showToast(
-        language === 'ta' ? '✅ அழைப்பு ஏற்கப்பட்டது' : '✅ Invitation accepted',
+        t('invitationAccepted'),
         'success'
       );
       loadReceivedRequests();
     } catch (error) {
       showToast(
-        language === 'ta' ? '❌ ஏற்பதில் பிழை' : '❌ Failed to accept',
+        t('failedAccept'),
         'error'
       );
     }
@@ -531,7 +531,7 @@ export default function ConnectionsPage() {
     try {
       await connectionService.rejectRequest(invitationId);
       showToast(
-        language === 'ta' ? '✅ அழைப்பு நிராகரிக்கப்பட்டது' : '✅ Invitation rejected',
+        t('invitationRejected'),
         'success'
       );
       if (activeTab === 'requests') {
@@ -541,7 +541,7 @@ export default function ConnectionsPage() {
       }
     } catch (error) {
       showToast(
-        language === 'ta' ? '❌ நிராகரிப்பதில் பிழை' : '❌ Failed to reject',
+        t('failedReject'),
         'error'
       );
     }
@@ -552,13 +552,13 @@ export default function ConnectionsPage() {
       setCancellingId(invitationId);
       const response = await connectionService.cancelInvitation(invitationId);
       showToast(
-        response.message || (language === 'ta' ? '✅ அழைப்பு ரத்து செய்யப்பட்டது' : '✅ Invitation cancelled'),
+        response.message || t('invitationCancelled'),
         'success'
       );
       setSentRequests(prev => prev.filter(inv => inv.id !== invitationId));
     } catch (error) {
       showToast(
-        language === 'ta' ? '❌ ரத்து செய்வதில் பிழை' : '❌ Failed to cancel',
+        t('failedCancel'),
         'error'
       );
     } finally {
@@ -576,7 +576,7 @@ export default function ConnectionsPage() {
       }
     } catch (error) {
       showToast(
-        language === 'ta' ? '❌ விவரங்களை ஏற்ற முடியவில்லை' : '❌ Failed to load details',
+        t('failedLoadDetails'),
         'error'
       );
     } finally {
@@ -864,7 +864,7 @@ export default function ConnectionsPage() {
 
         {/* Tabs */}
         <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden mb-6">
-          <div className="flex border-b border-gray-200">
+          <div className="flex border-b border-gray-200 overflow-x-auto no-scrollbar scroll-smooth">
             {[
               { id: 'friends', icon: Users, label: language === 'ta' ? 'குடும்பம்' : 'Family', count: connections.length },
               { id: 'requests', icon: Bell, label: language === 'ta' ? 'அழைப்புகள்' : 'Requests', count: receivedRequests.length },
@@ -873,7 +873,7 @@ export default function ConnectionsPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex-1 py-4 px-6 font-semibold transition-all duration-300 relative ${activeTab === tab.id
+                className={`flex-1 min-w-[120px] py-4 px-6 font-semibold transition-all duration-300 relative ${activeTab === tab.id
                   ? 'text-orange-600 bg-linear-to-b from-orange-50 to-transparent'
                   : 'text-gray-600 hover:bg-gray-50'
                   }`}

@@ -177,30 +177,30 @@ const ConnectedPeople: React.FC = () => {
   const handleBlockUnblock = async () => {
     try {
       setBlockingUser(true);
-      
+
       if (blockModal.isBlocked) {
         // Unblock user
         await api.post('/api/accounts/unblock/', {
           user_id: blockModal.personId
         });
-        toast.success(`${blockModal.personName} unblocked successfully`);
+        toast.success(`${blockModal.personName} ${t('unblockedSuccess')}`);
       } else {
         // Block user
         await api.post('/api/accounts/block/', {
           user_id: blockModal.personId
         });
-        toast.success(`${blockModal.personName} blocked successfully`);
+        toast.success(`${blockModal.personName} ${t('blockedSuccess')}`);
       }
-      
+
       closeBlockModal();
-      
+
       // Refresh the drilldown data
       if (selectedDrilldown) {
         handleCategoryClick(selectedDrilldown.relation_code, selectedDrilldown.category.code);
       }
     } catch (error: any) {
       console.error('Failed to block/unblock user:', error);
-      toast.error(error.response?.data?.message || 'Failed to block/unblock user');
+      toast.error(error.response?.data?.message || t('failedBlock'));
     } finally {
       setBlockingUser(false);
     }
@@ -328,13 +328,13 @@ const ConnectedPeople: React.FC = () => {
         <div className="mb-10 text-center md:text-left border-b border-amber-200 pb-6 relative">
           <div className="absolute -top-4 -left-4 w-24 h-24 bg-amber-100 rounded-full blur-3xl opacity-50"></div>
           <h1 className="text-xl md:text-2xl font-black text-amber-900 mb-2 flex flex-col md:flex-row items-center gap-3">
-  <div className="p-2 bg-linear-to-br from-amber-600 to-orange-600 rounded-2xl shadow-xl transform -rotate-3 hover:rotate-0 transition-transform duration-300">
-    <Users className="text-white" size={24} />
-  </div>
-  <span className="bg-linear-to-r from-amber-800 to-orange-700 bg-clip-text text-transparent">
-    {t('connectedPeoples')}
-  </span>
-</h1>
+            <div className="p-2 bg-linear-to-br from-amber-600 to-orange-600 rounded-2xl shadow-xl transform -rotate-3 hover:rotate-0 transition-transform duration-300">
+              <Users className="text-white" size={24} />
+            </div>
+            <span className="bg-linear-to-r from-amber-800 to-orange-700 bg-clip-text text-transparent">
+              {t('connectedPeoples')}
+            </span>
+          </h1>
           <p className="text-amber-700 font-medium ml-0 md:ml-16 flex items-center justify-center md:justify-start gap-2">
             <Info size={16} className="text-amber-500" />
             {t('manageConnectionsSub')}
@@ -389,7 +389,7 @@ const ConnectedPeople: React.FC = () => {
                 <div className="bg-linear-to-r from-amber-700 via-amber-800 to-amber-900 px-6 py-5">
                   <h2 className="text-xl md:text-2xl font-black text-white flex items-center gap-3">
                     <UserCheck className="bg-white/20 p-1.5 rounded-lg" size={32} />
-                    {t(relation.code) || relation.label}
+                    {relation.label || t(relation.code)}
                   </h2>
                 </div>
 
@@ -440,7 +440,7 @@ const ConnectedPeople: React.FC = () => {
                     <Users size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl md:text-2xl font-black">{t(selectedDrilldown.relation_code) || selectedDrilldown.relation_label}</h3>
+                    <h3 className="text-xl md:text-2xl font-black">{selectedDrilldown.relation_label || t(selectedDrilldown.relation_code)}</h3>
                     <p className="text-amber-100 text-xs md:text-sm font-medium tracking-wide uppercase opacity-80">{t(selectedDrilldown.category.code) || selectedDrilldown.category.label}</p>
                   </div>
                 </div>
@@ -496,7 +496,7 @@ const ConnectedPeople: React.FC = () => {
                         {/* Person Info */}
                         <div className="flex-1 text-center sm:text-left">
                           <div className="font-black text-amber-900 text-lg leading-tight mb-1">{person.name}</div>
-                          <div className="text-xs font-bold text-amber-600 uppercase tracking-widest mb-3">{t(person.relation_code) || person.relation_label}</div>
+                          <div className="text-xs font-bold text-amber-600 uppercase tracking-widest mb-3">{person.relation_label || t(person.relation_code)}</div>
                           <div className="flex flex-wrap justify-center sm:justify-start items-center gap-2">
                             {person.status === 'connected' ? (
                               <span className="inline-flex items-center text-[10px] uppercase font-black tracking-tighter text-green-700 bg-green-50 border border-green-100 px-2 py-1 rounded-md">
@@ -574,7 +574,7 @@ const ConnectedPeople: React.FC = () => {
                   <div className="relative w-10 h-10 md:w-12 md:h-12 rounded-xl overflow-hidden bg-white/10 p-0.5 shadow-inner border border-white/20 shrink-0">
                     <div className="w-full h-full bg-linear-to-br from-amber-50 to-orange-50 rounded-lg flex items-center justify-center">
                       <img
-                        src="/src/images/logo.png"
+                        src="/images/logo.png"
                         alt="KODI Logo"
                         className="w-full h-full object-cover scale-110"
                       />

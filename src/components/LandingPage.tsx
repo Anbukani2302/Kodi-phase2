@@ -19,11 +19,11 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
     });
 
     const heroImages = [
-        "/src/images/image2.png",
-        "/src/images/image3.png",
-        "/src/images/image4.png",
-        "/src/images/image5.png",
-        "/src/images/image6.png"
+        "/images/image2.png",
+        "/images/image3.png",
+        "/images/image4.png",
+        "/images/image5.png",
+        "/images/image6.png"
     ];
 
     useEffect(() => {
@@ -97,7 +97,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
     return (
         <div className="min-h-screen bg-white overflow-x-hidden">
             {/* Hero Section */}
-            <div className="relative h-screen">
+            <div className="relative h-[100svh]">
                 {heroImages.map((image, index) => (
                     <div
                         key={index}
@@ -138,7 +138,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                         >
                             <div className="inline-flex items-center justify-center p-2 overflow-hidden">
                                 <img
-                                    src="/src/images/logo.png"
+                                    src="/images/logo.png"
                                     alt="KODI Logo"
                                     className="w-20 h-20 object-contain"
                                     style={{ filter: 'sepia(0.4) hue-rotate(-10deg) saturate(1.2)' }}
@@ -148,8 +148,8 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                         {/* TAGLINE */}
                         <p
                             className="
-    mt-1 -translate-y-2 inline-block px-6 py-3 rounded-2xl
-    text-base md:text-lg lg:text-xl
+    mt-1 -translate-y-2 inline-block px-4 py-2 md:px-6 md:py-3 rounded-2xl
+    text-sm md:text-lg lg:text-xl
     font-semibold
     bg-yellow-500/20 text-yellow-200
     backdrop-blur-sm shadow-md
@@ -212,7 +212,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                         viewport={{ once: true }}
                         className="text-center mb-16"
                     >
-                        <h2 className="text-2xl md:text-1 font-bold text-gray-900 mb-6 tracking-tight">
+                        <h2 className="text-xl md:text-4xl font-bold text-gray-900 mb-6 tracking-tight px-2">
                             <span className="bg-linear-to-r from-amber-700 to-yellow-700 bg-clip-text text-transparent">
                                 {t('familyTreeMapping')}
                             </span>
@@ -299,7 +299,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                             <div className="bg-linear-to-br from-amber-600 to-yellow-700 p-4 rounded-2xl w-fit mb-8 shadow-lg shadow-amber-200">
                                 <Award className="h-10 w-10 text-white" />
                             </div>
-                            <h3 className="text-2xl font-bold text-gray-900 mb-4">{t('heritageProtection')}</h3>
+                            <h3 className="text-xl md:text-2xl font-bold text-gray-900 mb-4">{t('heritageProtection')}</h3>
                             <p className="text-gray-600 mb-8 leading-relaxed line-clamp-3">{t('heritageProtectionDesc')}</p>
                             <div className="space-y-4">
                                 <div className="flex items-center space-x-4 p-3 rounded-xl bg-amber-50/50 border border-amber-50">
@@ -354,7 +354,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                         >
                             <div className="relative rounded-[2.5rem] overflow-hidden shadow-2xl">
                                 <img
-                                    src="/src/images/image1.png"
+                                    src="/images/image1.png"
                                     alt="Family Tree"
                                     className="w-full h-100 md:h-125 object-cover group-hover:scale-105 transition-transform duration-700"
                                 />
@@ -431,7 +431,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                     <motion.h2
                         initial={{ opacity: 0, y: 20 }}
                         whileInView={{ opacity: 1, y: 0 }}
-                        className="text-4xl md:text-6xl font-black text-white mb-8 tracking-tighter"
+                        className="text-3xl md:text-6xl font-black text-white mb-8 tracking-tighter"
                     >
                         {t('primaryTarget')}
                     </motion.h2>
@@ -469,7 +469,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                                 <div className="flex items-center justify-center">
                                     <div className="h-12 w-12 rounded-lg bg-white border-2 border-red-300  flex items-center justify-center shadow-lg">
                                         <img
-                                            src="/src/images/logo.png" // replace with your actual file path
+                                            src="/images/logo.png" // replace with your actual file path
                                             alt="KODI Logo"
                                             className="h-12 w-12 object-contain"
                                         />

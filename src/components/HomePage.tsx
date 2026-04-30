@@ -88,7 +88,7 @@ export default function HomePage() {
   const handleLike = async (postId: number) => {
     try {
       const post = posts.find(p => p.id === postId);
-      if (post?.is_liked) {
+      if (post?.user_interaction?.is_liked) {
         await postService.unlikePost(postId);
       } else {
         await postService.likePost(postId);
@@ -104,7 +104,7 @@ export default function HomePage() {
     if (!content?.trim()) return;
 
     try {
-      await postService.createComment(postId, content);
+      await postService.createComment(postId, { content });
       setCommentInputs({ ...commentInputs, [postId]: '' });
       fetchAndUpdatePost(postId);
     } catch (error) {
@@ -138,12 +138,12 @@ export default function HomePage() {
       <div className="max-w-4xl mx-auto space-y-6">
 
         {/* Hero Section - Family Tree Roadmap */}
-        <div className="bg-gradient-to-br from-green-50 to-white border border-green-100 rounded-3xl p-8 shadow-sm">
+        <div className="bg-linear-to-br from-green-50 to-white border border-green-100 rounded-3xl p-8 shadow-sm">
           <div className="text-center space-y-4">
             <h1 className="text-3xl font-bold text-green-800">
               {t('familyTreeTitle')}
             </h1>
-            <div className="h-1 w-24 bg-gradient-to-r from-green-500 to-green-300 mx-auto rounded-full"></div>
+            <div className="h-1 w-24 bg-linear-to-r from-green-500 to-green-300 mx-auto rounded-full"></div>
             <p className="text-green-900 leading-relaxed text-lg max-w-3xl mx-auto">
               {t('familyTreeContent')}
             </p>
@@ -192,7 +192,7 @@ export default function HomePage() {
               <button
                 type="submit"
                 disabled={posting || (!postContent.trim() && !selectedImage)}
-                className="px-6 py-2 bg-gradient-to-r from-green-600 to-green-500 text-white rounded-lg font-medium hover:from-green-700 hover:to-green-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                className="px-6 py-2 bg-linear-to-r from-green-600 to-green-500 text-white rounded-lg font-medium hover:from-green-700 hover:to-green-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
                 {posting ? (
                   <>
@@ -213,13 +213,13 @@ export default function HomePage() {
             {/* Post Header */}
             <div className="p-6 pb-4">
               <div className="flex items-center space-x-3 mb-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-400 rounded-full flex items-center justify-center">
+                <div className="w-12 h-12 bg-linear-to-br from-green-500 to-green-400 rounded-full flex items-center justify-center">
                   <span className="text-white font-bold text-lg">
-                    {post.user.name.charAt(0).toUpperCase()}
+                    {post.author.name.charAt(0).toUpperCase()}
                   </span>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">{post.user.name}</h3>
+                  <h3 className="font-semibold text-gray-900">{post.author.name}</h3>
                   <p className="text-sm text-gray-500">
                     {new Date(post.created_at).toLocaleDateString('ta-IN')}
                   </p>
@@ -230,16 +230,16 @@ export default function HomePage() {
               <p className="text-gray-800 mb-4">{post.content}</p>
 
               {/* Post Image */}
-              {post.image && (
-                <img src={post.image} alt="Post" className="w-full rounded-lg mb-4" />
+              {post.media && post.media.length > 0 && (
+                <img src={post.media[0].file} alt="Post" className="w-full rounded-lg mb-4" />
               )}
 
               {/* Post Stats */}
               <div className="flex items-center justify-between text-sm text-gray-500 mb-4 pb-4 border-b">
-                <span>{post.likes_count} {t('like')}</span>
+                <span>{post.engagement?.likes_count || 0} {t('like')}</span>
                 <div className="flex space-x-4">
-                  <span>{post.comments_count} {t('comment')}</span>
-                  <span>{post.shares_count} {t('share')}</span>
+                  <span>{post.engagement?.comments_count || 0} {t('comment')}</span>
+                  <span>{post.engagement?.shares_count || 0} {t('share')}</span>
                 </div>
               </div>
 
@@ -247,12 +247,12 @@ export default function HomePage() {
               <div className="flex items-center justify-around">
                 <button
                   onClick={() => handleLike(post.id)}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${post.is_liked
+                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${post.user_interaction?.is_liked
                     ? 'text-red-600 bg-red-50'
                     : 'text-gray-600 hover:bg-gray-100'
                     }`}
                 >
-                  <Heart className={`h-5 w-5 ${post.is_liked ? 'fill-current' : ''}`} />
+                  <Heart className={`h-5 w-5 ${post.user_interaction?.is_liked ? 'fill-current' : ''}`} />
                   <span className="font-medium">{t('like')}</span>
                 </button>
 

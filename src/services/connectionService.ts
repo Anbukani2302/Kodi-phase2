@@ -136,8 +136,8 @@ export interface SearchSuggestion {
       mothername2: string;
       gender: string;
       preferred_language: string;
-      religion: string;
-      caste: string;
+      lifestyle: string;
+      familyname8: string;
       profile_picture: string | null;
     };
     private_fields: null;
@@ -154,8 +154,8 @@ export interface SearchSuggestion {
     mothername2: string;
     gender: string;
     preferred_language: string;
-    religion: string;
-    caste: string;
+    lifestyle: string;
+    familyname8: string;
     mobile_number: string;
   };
   date_of_birth: string | null;
@@ -210,8 +210,8 @@ export interface Person {
     mothername2: string;
     gender: string;
     preferred_language: string;
-    religion: string;
-    caste: string;
+    lifestyle: string;
+    familyname8: string;
   };
 }
 
@@ -229,8 +229,8 @@ export interface RelationLabel {
   normalized_path?: string[];
   label_metadata?: {
     language: string;
-    religion?: string;
-    caste?: string;
+    lifestyle?: string;
+    familyname8?: string;
     family?: string;
     specificity_score?: number;
     default_type?: string;

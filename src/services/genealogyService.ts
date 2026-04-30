@@ -62,7 +62,7 @@ export interface UpdateNamePayload {
 }
 
 export interface PersonDetailResponse {
-  mobile_number: PersonDetailResponse;
+  mobile_number: string;
   id: number;
   linked_user: number;
   full_name: string;
@@ -83,8 +83,8 @@ export interface PersonDetailResponse {
     mothername2: string;
     gender: string;
     preferred_language: string;
-    religion: string;
-    caste: string;
+    lifestyle: string;
+    familyname8: string;
   };
   is_current_user: boolean;
   created_at: string;
@@ -196,8 +196,8 @@ export interface PersonResponse {
     mothername2: string;
     gender: string;
     preferred_language: string;
-    religion: string;
-    caste: string;
+    lifestyle: string;
+    familyname8: string;
   };
   is_current_user: boolean;
   created_at: string;
@@ -336,7 +336,7 @@ class GenealogyService {
         younger_brother: "add_younger_brother",
         thambi: "add_thambi",
         elder_sister: "add_elder_sister",
-        akka: "add_akka",
+        akka: "add_elder_sister",
         younger_sister: "add_younger_sister",
         thangai: "add_thangai",
         brother: "add_elder_brother",
@@ -389,7 +389,7 @@ class GenealogyService {
         அம்மா: "add_mother",
         அண்ணன்: "add_anna",
         தம்பி: "add_thambi",
-        அக்கா: "add_akka",
+        அக்கா: "add_elder_sister",
         தங்கை: "add_thangai",
         மகன்: "add_magan",
         மகள்: "add_maghazh",

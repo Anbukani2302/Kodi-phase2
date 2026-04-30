@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { Phone, X, Send, User, CheckCircle, AlertCircle } from "lucide-react";
 import { genealogyService } from "../services/genealogyService";
+import { useLanguage } from "../contexts/LanguageContext";
 
 interface ConnectRelativeModalProps {
   open: boolean;
@@ -22,6 +23,7 @@ export default function ConnectRelativeModal({
   onSuccess,
   onError
 }: ConnectRelativeModalProps) {
+  const { t } = useLanguage();
   const [mobileNumber, setMobileNumber] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,14 +34,14 @@ export default function ConnectRelativeModal({
     e.preventDefault();
 
     if (!mobileNumber.trim()) {
-      setError("Mobile number is required");
+      setError(t("mobileNumberRequired"));
       return;
     }
 
     // Basic validation for mobile number (10 digits)
     const phoneRegex = /^\d{10}$/;
     if (!phoneRegex.test(mobileNumber.trim())) {
-      setError("Please enter a valid 10-digit mobile number");
+      setError(t("invalidMobileLength"));
       return;
     }
 
@@ -61,13 +63,13 @@ export default function ConnectRelativeModal({
         setSuccess(true);
 
         // Show success message
-        const successMessage = response.message || `Invitation sent successfully to ${mobileNumber}`;
+        const successMessage = response.message || `${t('invitationSentTo')} ${mobileNumber}`;
         onSuccess(successMessage);
 
         // Auto close modal immediately so the parent toast can be seen
         handleClose();
       } else {
-        const errorMsg = response.message || "Failed to send invitation";
+        const errorMsg = response.message || t("failedAddPerson");
         setError(errorMsg);
         onError?.(errorMsg);
       }
@@ -115,12 +117,12 @@ export default function ConnectRelativeModal({
               </div>
               <div>
                 <h3 className="text-xl font-bold text-gray-800">
-                  {success ? "Invitation Sent!" : "Connect Relative"}
+                  {success ? t("invitationSentTitle") : t("connect")}
                 </h3>
                 <p className="text-sm text-gray-600">
                   {success
-                    ? "Invitation has been sent successfully"
-                    : `Send invitation to ${relativeName}`
+                    ? t("invitationSentDesc")
+                    : `${t("sendInvitationTitle")} ${relativeName}`
                   }
                 </p>
               </div>
@@ -145,10 +147,10 @@ export default function ConnectRelativeModal({
                   <CheckCircle className="text-green-600" size={40} />
                 </div>
                 <h4 className="text-lg font-semibold text-gray-800 mb-2">
-                  Invitation Sent Successfully!
+                  {t("invitationSentTitle")}
                 </h4>
                 <p className="text-gray-600">
-                  {responseData?.message || `Invitation sent to ${mobileNumber}`}
+                  {responseData?.message || `${t('invitationSentTo')} ${mobileNumber}`}
                 </p>
               </div>
 
@@ -158,7 +160,7 @@ export default function ConnectRelativeModal({
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Status:</span>
                     <span className="font-medium text-green-600">
-                      {responseData.status?.replace('_', ' ') || 'Success'}
+                      {responseData.status?.replace('_', ' ') || t('success')}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
@@ -170,16 +172,16 @@ export default function ConnectRelativeModal({
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">User Status:</span>
                     <span className={`font-medium ${responseData.user_exists ? 'text-green-600' : 'text-amber-600'}`}>
-                      {responseData.user_exists ? 'Existing User' : 'New User'}
+                      {responseData.user_exists ? t('existingUser') : t('newUser')}
                     </span>
                   </div>
                   {responseData.action_needed && (
                     <div className="flex items-start gap-2 p-3 bg-amber-50 rounded border border-amber-200">
                       <AlertCircle className="text-amber-600 mt-0.5" size={16} />
                       <div className="text-sm">
-                        <p className="font-medium text-amber-800 mb-1">Action Required</p>
+                        <p className="font-medium text-amber-800 mb-1">{t('actionRequired')}</p>
                         <p className="text-amber-700">
-                          The user needs to accept your invitation to connect.
+                          {t('userNeedsAccept')}
                         </p>
                       </div>
                     </div>
@@ -204,7 +206,7 @@ export default function ConnectRelativeModal({
               <div className="text-center">
                 <div className="inline-flex items-center gap-2 text-sm text-gray-500">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span>Closing automatically in 3 seconds...</span>
+                  <span>{t('closingAutomatically')}</span>
                 </div>
               </div>
             </div>
@@ -229,7 +231,7 @@ export default function ConnectRelativeModal({
                   {/* Mobile Number Input */}
                   <div>
                     <label htmlFor="mobileNumber" className="block text-sm font-medium text-gray-700 mb-2">
-                      Mobile Number *
+                      {t('mobileNumber')} *
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -247,14 +249,14 @@ export default function ConnectRelativeModal({
                           }
                         }}
                         className="w-full pl-12 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors disabled:bg-gray-100 disabled:cursor-not-allowed"
-                        placeholder="Enter 10-digit mobile number"
+                        placeholder={t('enterMobileNumbers')}
                         disabled={loading}
                         autoFocus
                         maxLength={10}
                       />
                     </div>
                     <p className="mt-2 text-xs text-gray-500">
-                      Enter the mobile number to send invitation
+                      {t('invitationNote')}
                     </p>
                     {error && (
                       <div className="mt-2 flex items-start gap-2 p-3 bg-red-50 rounded border border-red-200">
@@ -273,22 +275,22 @@ export default function ConnectRelativeModal({
                     className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={loading}
                   >
-                    Cancel
+                    {t('cancel')}
                   </button>
                   <button
                     type="submit"
                     disabled={loading || !mobileNumber.trim() || mobileNumber.length !== 10}
-                    className="flex-1 px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-black rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+                    className="flex-1 px-4 py-3 bg-linear-to-r from-green-600 to-emerald-600 text-black rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
                   >
                     {loading ? (
                       <div className="flex items-center justify-center gap-2">
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        Sending...
+                        {t('processing')}
                       </div>
                     ) : (
                       <div className="flex items-center justify-center gap-2">
                         <Send size={18} />
-                        Send Invitation
+                        {t('sendInvitationTitle')}
                       </div>
                     )}
                   </button>

@@ -276,8 +276,8 @@ Response: FamilyMember
   familyname4?: string;
   familyname5?: string;
   preferred_language?: string;
-  religion?: string;
-  caste?: string;
+  lifestyle?: string;
+  familyname8?: string;
   created_at?: string;
   updated_at?: string;
 }

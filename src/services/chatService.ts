@@ -8,6 +8,8 @@ export interface User {
   mobile_number: string;
   name?: string;
   email?: string;
+  first_name?: string;
+  last_name?: string;
 }
 
 export interface Conversation {
@@ -404,7 +406,7 @@ export const chatService = {
   // Get blocked users list
   getBlockedUsers: async (): Promise<any[]> => {
     try {
-      const response = await api.get('/api/accounts/blocked/');
+      const response = await api.get('/api/chat/blocked/');
       return response.data;
     } catch (error) {
       console.error('Error fetching blocked users:', error);

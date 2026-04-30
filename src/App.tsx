@@ -14,7 +14,7 @@ import ConnectionsPage from "./components/ConnectionsPage";
 import DashboardPage from "./components/DashboardPage";
 import OneToConnectPage from "./components/OneToConnectPage";
 import ConnectedPeople from "./components/ConnectedPeople";
-
+import { NotificationProvider } from "./contexts/NotificationContext"; 
 
 import { authService } from "./services/authService";
 import { Toaster } from "react-hot-toast";
@@ -51,7 +51,7 @@ export default function App() {
 
   return (
     <LanguageProvider>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gray-50 overflow-x-hidden">
         {!showLoginModal && !isOtpStep && (
           <Navbar
             isAuthenticated={isAuthenticated}
@@ -137,6 +137,15 @@ export default function App() {
             path="/dashboard"
             element={
               isAuthenticated ? <DashboardPage /> : <Navigate to="/" />
+            }
+          />
+
+          <Route
+            path="/post/:id"
+            element={
+              isAuthenticated ? (
+                localStorage.getItem('userRole') === 'admin' ? <Navigate to="/dashboard" /> : <FeedPage />
+              ) : <Navigate to="/" />
             }
           />
 

@@ -84,6 +84,14 @@ export default function ChatPage() {
     // Prevent document-level scroll for an app-like experience
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
+
+    // Check for mobile number in URL parameter and start direct chat
+    const urlParams = new URLSearchParams(window.location.search);
+    const mobileNumber = urlParams.get('mobile');
+    if (mobileNumber) {
+      startDirectChatWithMobile(mobileNumber);
+    }
+
     return () => {
       document.body.style.overflow = originalStyle;
     };
@@ -108,29 +116,69 @@ export default function ChatPage() {
       }
     };
 
+    // Load everything when component mounts or activeTab changes
     loadConversations(activeTab);
     loadNicknames();
+
+    // Always refresh blocked users from the GET api/chat/block/ endpoint
+    chatService.getBlockedUsers().then(setBlockedUsers).catch(console.error);
   }, [activeTab]);
 
-  // Load messages when conversation changes
+  // Mark messages as read when conversation is selected or changes
   useEffect(() => {
     if (selectedConversation) {
       loadMessages(selectedConversation.id);
-      setShowChatOptions(false); // Close options menu when changing chat
+      setShowChatOptions(false);
+
+      // Call markAllAsRead immediately when opening
+      chatService.markAllAsRead(selectedConversation.id)
+        .then(() => {
+          // Update local unread count to 0 immediately
+          setConversations(prev => prev.map(conv =>
+            conv.id === selectedConversation.id ? { ...conv, unread_count: 0 } : conv
+          ));
+        })
+        .catch(console.error);
 
       if (selectedConversation.room_type === 'direct') {
-        const participantId = selectedConversation.participants[0]?.id;
-        if (participantId) {
-          chatService.checkBlockStatus(participantId)
+        // Reset states immediately before fetching new ones to avoid UI persistence from previous chat
+        setIsBlockedByMe(false);
+        setAmIBlocked(false);
+
+        const localStorageUser = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null;
+        const currentUserMobile = localStorageUser?.mobile_number;
+        const currentUserId = Number(user?.id || localStorageUser?.id || localStorageUser?.user_id || localStorageUser?.pk);
+        const normalizePhone = (p: string | undefined | null) => p ? p.replace(/\D/g, '').slice(-10) : '';
+        const myMobile = normalizePhone(currentUserMobile);
+
+        const targetParticipant = selectedConversation.participants.find(p => {
+          const pId = Number(p.id);
+          const pMobile = normalizePhone(p.mobile_number);
+          const isMe = (pId !== 0 && pId === currentUserId) || (myMobile !== '' && pMobile === myMobile);
+          return !isMe;
+        }) || (selectedConversation.participants.length > 1 ? selectedConversation.participants[1] : selectedConversation.participants[0]);
+
+        if (targetParticipant?.id) {
+          chatService.checkBlockStatus(targetParticipant.id)
             .then((status: any) => {
               setIsBlockedByMe(status.i_blocked_them);
               setAmIBlocked(status.they_blocked_me);
             })
-            .catch(console.error);
+            .catch((err) => {
+              console.error('Failed to check block status:', err);
+              // Reset on error to allow messaging by default if check fails, or keep as is?
+              // Better to reset to false to avoid accidentally locking out users on API failure
+              setIsBlockedByMe(false);
+              setAmIBlocked(false);
+            });
         } else {
           setIsBlockedByMe(false);
           setAmIBlocked(false);
         }
+      } else {
+        // Reset block status for group chats so messaging is never restricted
+        setIsBlockedByMe(false);
+        setAmIBlocked(false);
       }
 
       // Mark as read when opening conversation
@@ -163,19 +211,23 @@ export default function ChatPage() {
         setMessages(prev => {
           return prev.map(msg => {
             const freshMsg = freshMessages.find(m => m.id === msg.id);
+            // If the message was read, ensure it shows blue ticks
             if (freshMsg && freshMsg.read_at !== msg.read_at) {
               return { ...msg, read_at: freshMsg.read_at };
             }
             return msg;
           });
         });
+
+        // Also refresh conversations to update last message status in list
+        loadConversations(activeTab);
       } catch (error) {
         console.error('Error checking read status:', error);
       }
     }, 3000); // Check every 3 seconds
 
     return () => clearInterval(interval);
-  }, [selectedConversation, user]);
+  }, [selectedConversation, user, activeTab]);
 
   // Setup WebSocket connection
   useEffect(() => {
@@ -199,7 +251,7 @@ export default function ChatPage() {
             ...message,
             attachments: message.attachments ||
               (message as any).attachment ? [(message as any).attachment] :
-                (message as any).files ? (message as any).files : []
+              (message as any).files ? (message as any).files : []
           };
 
           // Add delivered status for own messages sent via WebSocket
@@ -271,6 +323,28 @@ export default function ChatPage() {
     }, 1000);
   }, [isTyping]);
 
+  // Function to start direct chat with mobile number without showing modal
+  const startDirectChatWithMobile = async (mobileNumber: string) => {
+    if (!mobileNumber.trim()) return;
+
+    try {
+      console.log('Starting direct chat with mobile number:', mobileNumber);
+
+      // Use the existing handleCreateDirectChat function with the mobile number
+      await handleCreateDirectChat(mobileNumber.trim());
+
+      // Remove the mobile parameter from URL to prevent re-triggering
+      const url = new URL(window.location.href);
+      url.searchParams.delete('mobile');
+      window.history.replaceState({}, '', url.toString());
+
+    } catch (error) {
+      console.error('Failed to start direct chat:', error);
+      setError(t('failedCreateChat'));
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
   const loadConversations = async (tab?: string) => {
     try {
       // Don't set loading to true here to avoid flickering the list away
@@ -278,7 +352,7 @@ export default function ChatPage() {
       setConversations(data);
     } catch (error) {
       console.error('Failed to load conversations:', error);
-      setError('Failed to load conversations');
+      setError(t('failedLoadConversations'));
     } finally {
       if (loading) setLoading(false);
     }
@@ -300,7 +374,7 @@ export default function ChatPage() {
       })));
     } catch (error) {
       console.error('Failed to load messages:', error);
-      setError('Failed to load messages');
+      setError(t('failedLoadMessages'));
     }
   };
 
@@ -319,9 +393,9 @@ export default function ChatPage() {
       await loadMessages(selectedConversation.id);
       setEditingMessageId(null);
       setEditMessageContent('');
-      toast.success('Message updated');
+      toast.success(t('messageUpdated'));
     } catch (err) {
-      setError('Failed to edit message');
+      setError(t('failedUpdateName'));
     }
   };
 
@@ -343,10 +417,10 @@ export default function ChatPage() {
       setMessages(prev => prev.filter(m => m.id !== msgToDeleteId));
       setMsgToDeleteId(null);
       setShowMsgDeleteModal(false);
-      toast.success('Message deleted successfully');
+      toast.success(t('messageDeleted'));
     } catch (err) {
-      setError('Failed to delete message');
-      toast.error('Failed to delete message');
+      setError(t('failedDeleteMessage'));
+      toast.error(t('failedDeleteMessage'));
     }
   };
 
@@ -359,14 +433,14 @@ export default function ChatPage() {
     if (!selectedConversation) return;
     try {
       await chatService.exitGroup(selectedConversation.id);
-      toast.success('Exited group successfully');
+      toast.success(t('exitedGroup'));
       loadConversations();
       setSelectedConversation(null);
       setShowExitGroupModal(false);
       setShowChatOptions(false);
     } catch (err) {
-      setError('Failed to exit group');
-      toast.error('Failed to exit group');
+      setError(t('failedExitGroup'));
+      toast.error(t('failedExitGroup'));
     }
   };
 
@@ -374,7 +448,7 @@ export default function ChatPage() {
     if (!selectedConversation || !addMemberUserId.trim()) return;
     try {
       await chatService.addMemberToGroup(selectedConversation.id, addMemberUserId.trim());
-      toast.success('Member added successfully');
+      toast.success(t('memberAdded'));
       setAddMemberUserId('');
       setAddMemberSearchText('');
       setShowAddMemberModal(false);
@@ -383,10 +457,10 @@ export default function ChatPage() {
     } catch (err: any) {
       console.error('Error adding member:', err);
       if (err.response?.data?.detail === "User not found") {
-        toast.error('user not found please enter correct moble no');
+        toast.error(t('userNotFoundMobile'));
       } else {
-        setError('Failed to add member');
-        toast.error('Failed to add member');
+        setError(t('failedAddMember'));
+        toast.error(t('failedAddMember'));
       }
     }
   };
@@ -398,13 +472,13 @@ export default function ChatPage() {
       await api.post(`/api/chat/rooms/${selectedConversation.id}/remove-members/`, {
         member_ids: [memberId]
       });
-      toast.success('Member removed successfully');
+      toast.success(t('memberRemoved'));
       // Refresh members list
       fetchGroupMembers(selectedConversation.id);
     } catch (err: any) {
       console.error('Remove member error:', err);
-      setError('Failed to remove member');
-      toast.error('Failed to remove member');
+      setError(t('failedRemoveMember'));
+      toast.error(t('failedRemoveMember'));
     } finally {
       setRemovingMemberId(null);
     }
@@ -418,7 +492,7 @@ export default function ChatPage() {
       const members = response.data.results || response.data;
       setGroupMembers(Array.isArray(members) ? members : []);
     } catch (err) {
-      setError('Failed to fetch group members');
+      setError(t('failedLoadMembers'));
     } finally {
       setFetchingMembers(false);
     }
@@ -458,7 +532,7 @@ export default function ChatPage() {
       const otherUser = selectedConversation.participants.find(p => p.id !== user?.id) || selectedConversation.participants[0];
       if (!otherUser) return;
       await chatService.updateContactNickname(otherUser.id, nicknameValue.trim());
-      toast.success('Nickname updated');
+      toast.success(t('nicknameUpdated'));
       setNicknameValue('');
       setShowNicknameModal(false);
 
@@ -473,8 +547,8 @@ export default function ChatPage() {
       setNicknames(map);
       loadConversations(activeTab);
     } catch (err) {
-      setError('Failed to update nickname');
-      toast.error('Failed to update name');
+      setError(t('failedUpdateName'));
+      toast.error(t('failedUpdateName'));
     }
   };
 
@@ -486,10 +560,10 @@ export default function ChatPage() {
       setSelectedConversation(null);
       setShowChatOptions(false);
       setShowClearChatModal(false);
-      toast.success('Chat cleared successfully');
+      toast.success(t('chatCleared'));
     } catch (err) {
-      setError('Failed to delete conversation');
-      toast.error('Failed to clear chat');
+      setError(t('failedClearChat'));
+      toast.error(t('failedClearChat'));
     }
   };
 
@@ -558,7 +632,7 @@ export default function ChatPage() {
   const handleCreateDirectChat = async (identifierOverride?: string) => {
     const inputValue = (identifierOverride || newChatUserId).trim();
     if (!inputValue) {
-      setError('Please enter mobile number');
+      setError(t('pleaseEnterMobile'));
       setTimeout(() => setError(null), 5000);
       return;
     }
@@ -597,7 +671,7 @@ export default function ChatPage() {
       setError(null);
     } catch (error: any) {
       console.error('Failed to create chat:', error);
-      setError('Failed to create direct chat.');
+      setError(t('failedCreateChat'));
       setTimeout(() => setError(null), 5000);
     }
   };
@@ -611,7 +685,7 @@ export default function ChatPage() {
 
     try {
       const memberArray = newGroupMembers.split(',').map(m => m.trim()).filter(Boolean);
-      
+
       // Convert mobile numbers to user IDs
       const groupMembersList = [];
       for (const member of memberArray) {
@@ -620,7 +694,7 @@ export default function ChatPage() {
           try {
             const searchResponse = await api.get(`/api/auth/api/mobile-search/?q=${member}`);
             const suggestions = searchResponse.data?.results || searchResponse.data?.suggestions || (Array.isArray(searchResponse.data) ? searchResponse.data : []);
-            
+
             if (suggestions.length > 0) {
               const matchedUser = suggestions[0];
               groupMembersList.push(matchedUser.id);
@@ -651,7 +725,7 @@ export default function ChatPage() {
       setError(null);
     } catch (error: any) {
       console.error('Failed to create group:', error);
-      setError(error.message || 'Failed to create group. Check the participant details.');
+      setError(error.message || t('groupCreateError'));
       setTimeout(() => setError(null), 5000);
     }
   };
@@ -670,7 +744,21 @@ export default function ChatPage() {
   const handleToggleBlock = async () => {
     if (!selectedConversation || selectedConversation.room_type !== 'direct') return;
 
-    const targetParticipant = selectedConversation.participants.find(p => p.id !== user?.id) || selectedConversation.participants[0];
+    const participants = selectedConversation.participants || [];
+    const localStorageUser = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null;
+    const currentUserMobile = localStorageUser?.mobile_number;
+    const currentUserId = Number(user?.id || localStorageUser?.id || localStorageUser?.user_id || localStorageUser?.pk);
+
+    const normalizePhone = (p: string | undefined | null) => p ? p.replace(/\D/g, '').slice(-10) : '';
+    const myMobile = normalizePhone(currentUserMobile);
+
+    const targetParticipant = participants.find(p => {
+      const pId = Number(p.id);
+      const pMobile = normalizePhone(p.mobile_number);
+      const isMe = (pId !== 0 && pId === currentUserId) || (myMobile !== '' && pMobile === myMobile);
+      return !isMe;
+    }) || (participants.length > 1 ? participants[1] : participants[0]);
+
     if (!targetParticipant) return;
 
     try {
@@ -681,6 +769,10 @@ export default function ChatPage() {
         await chatService.blockUser(targetParticipant.id);
         setIsBlockedByMe(true);
       }
+
+      // Refresh blocked users list after block/unblock action
+      chatService.getBlockedUsers().then(setBlockedUsers).catch(console.error);
+
       setShowChatOptions(false);
     } catch (err) {
       setError('Failed to update block status');
@@ -776,19 +868,19 @@ export default function ChatPage() {
               onClick={() => setActiveTab('all')}
               className={`flex-1 py-3 text-xs font-bold transition-all border-b-2 ${activeTab === 'all' ? 'border-orange-600 text-orange-600' : 'border-transparent text-gray-400 hover:text-orange-600'}`}
             >
-              ALL
+              {t('all')}
             </button>
             <button
               onClick={() => setActiveTab('direct')}
               className={`flex-1 py-3 text-xs font-bold transition-all border-b-2 ${activeTab === 'direct' ? 'border-orange-600 text-orange-600' : 'border-transparent text-gray-400 hover:text-orange-600'}`}
             >
-              DIRECT
+              {t('direct')}
             </button>
             <button
               onClick={() => setActiveTab('group')}
               className={`flex-1 py-3 text-xs font-bold transition-all border-b-2 ${activeTab === 'group' ? 'border-orange-600 text-orange-600' : 'border-transparent text-gray-400 hover:text-orange-600'}`}
             >
-              GROUP
+              {t('group')}
             </button>
           </div>
         </div>
@@ -813,9 +905,23 @@ export default function ChatPage() {
                     <span className="text-white font-bold text-lg">
                       {(() => {
                         const participants = conversation.participants || [];
-                        const other = participants.find(p => Number(p.id) !== Number(user?.id)) || participants[0];
+                        const localStorageUser = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null;
+                        const currentUserMobile = localStorageUser?.mobile_number;
+                        const currentUserId = Number(user?.id || localStorageUser?.id || localStorageUser?.user_id || localStorageUser?.pk);
+
+                        const normalizePhone = (p: string | undefined | null) => p ? p.replace(/\D/g, '').slice(-10) : '';
+                        const myMobile = normalizePhone(currentUserMobile);
+
+                        // Find the other user (not current user) by ID or Mobile Number
+                        const other = participants.find(p => {
+                          const pId = Number(p.id);
+                          const pMobile = normalizePhone(p.mobile_number);
+                          const isMe = (pId !== 0 && pId === currentUserId) || (myMobile !== '' && pMobile === myMobile);
+                          return !isMe;
+                        }) || (participants.length > 1 ? participants[1] : participants[0]);
+
                         const nickname = other?.id ? nicknames[other.id] : null;
-                        const label = nickname || other?.name || other?.mobile_number || 'U';
+                        const label = nickname || other?.first_name || other?.name || other?.mobile_number || 'U';
                         return label.charAt(0).toUpperCase();
                       })()}
                     </span>
@@ -824,12 +930,27 @@ export default function ChatPage() {
                 <div className="flex-1 text-left min-w-0">
                   <h3 className="font-bold text-gray-900 truncate">
                     {conversation.room_type === 'group'
-                      ? (conversation.name || 'Untitled Group')
+                      ? (conversation.name || t('untitledGroup'))
                       : (() => {
                         const participants = conversation.participants || [];
-                        const other = participants.find(p => Number(p.id) !== Number(user?.id)) || participants[0];
+                        const localStorageUser = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null;
+                        const currentUserMobile = localStorageUser?.mobile_number;
+                        const currentUserId = Number(user?.id || localStorageUser?.id || localStorageUser?.user_id || localStorageUser?.pk);
+
+                        const normalizePhone = (p: string | undefined | null) => p ? p.replace(/\D/g, '').slice(-10) : '';
+                        const myMobile = normalizePhone(currentUserMobile);
+
+                        // Find the other user (not current user) by ID or Mobile Number
+                        const other = participants.find(p => {
+                          const pId = Number(p.id);
+                          const pMobile = normalizePhone(p.mobile_number);
+                          const isMe = (pId !== 0 && pId === currentUserId) || (myMobile !== '' && pMobile === myMobile);
+                          return !isMe;
+                        }) || (participants.length > 1 ? participants[1] : participants[0]);
+
                         const nickname = other?.id ? nicknames[other.id] : null;
-                        return nickname || other?.name || other?.mobile_number || 'Unknown User';
+                        const displayName = nickname || other?.first_name || other?.name || other?.mobile_number || t('unknownUser');
+                        return displayName;
                       })()}
                   </h3>
                   {conversation.last_message && (
@@ -848,7 +969,7 @@ export default function ChatPage() {
           ) : (
             <div className="p-8 text-center bg-gray-50 h-full flex flex-col items-center justify-center text-gray-400">
               <MessageCircle className="h-12 w-12 mb-3 opacity-20" />
-              <p className="text-sm font-medium">No messages yet</p>
+              <p className="text-sm font-medium">{t('noMessages')}</p>
             </div>
           )}
         </div>
@@ -886,35 +1007,48 @@ export default function ChatPage() {
                         const participants = selectedConversation.participants || [];
                         const other = participants.find(p => Number(p.id) !== Number(user?.id)) || participants[0];
                         const nickname = other?.id ? nicknames[other.id] : null;
-                        const label = nickname || other?.name || other?.mobile_number || 'U';
+                        const label = nickname || other?.first_name || other?.name || other?.mobile_number || 'U';
                         return label.charAt(0).toUpperCase();
                       })()}
                   </span>
                 </div>
                 <div>
-                  <h3 className="font-bold text-gray-900 leading-tight">
-                    {selectedConversation.room_type === 'group'
-                      ? (selectedConversation.name || 'Untitled Group')
-                      : (() => {
-                        const participants = selectedConversation.participants || [];
-                        const other = participants.find(p => Number(p.id) !== Number(user?.id)) || participants[0];
-                        const nickname = other?.id ? nicknames[other.id] : null;
-                        return nickname || other?.name || other?.mobile_number || 'User';
-                      })()}
-                  </h3>
-                  <p className="text-[11px] font-medium flex items-center gap-1">
-                    {selectedConversation.room_type === 'direct' && (() => {
-                      const participants = selectedConversation.participants || [];
-                      const other = participants.find(p => Number(p.id) !== Number(user?.id)) || participants[0];
-                      const isOnline = other?.id ? onlineUsers.has(Number(other.id)) : false;
+                  {selectedConversation.room_type === 'direct' ? (() => {
+                    const participants = selectedConversation.participants || [];
+                    const localStorageUser = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null;
+                    const currentUserMobile = localStorageUser?.mobile_number;
+                    const currentUserId = Number(user?.id || localStorageUser?.id || localStorageUser?.user_id || localStorageUser?.pk);
 
-                      return (
-                        <>
-                          {/* Commented out online status display */}
-                        </>
-                      );
-                    })()}
-                  </p>
+                    const normalizePhone = (p: string | undefined | null) => p ? p.replace(/\D/g, '').slice(-10) : '';
+                    const myMobile = normalizePhone(currentUserMobile);
+
+                    // Find the other user (not current user) by ID or Mobile Number
+                    const other = participants.find(p => {
+                      const pId = Number(p.id);
+                      const pMobile = normalizePhone(p.mobile_number);
+                      const isMe = (pId !== 0 && pId === currentUserId) || (myMobile !== '' && pMobile === myMobile);
+                      return !isMe;
+                    }) || (participants.length > 1 ? participants[1] : participants[0]);
+
+                    const nickname = other?.id ? nicknames[other.id] : null;
+                    const displayName = nickname || other?.first_name || other?.name || 'User';
+                    const mobileNumber = other?.mobile_number || '';
+
+                    return (
+                      <>
+                        <h3 className="font-bold text-gray-900 leading-tight">
+                          {displayName}
+                        </h3>
+                        <p className="text-amber-600 font-semibold text-sm">
+                          {mobileNumber}
+                        </p>
+                      </>
+                    );
+                  })() : (
+                    <h3 className="font-bold text-gray-900 leading-tight">
+                      {selectedConversation.name || t('untitledGroup')}
+                    </h3>
+                  )}
                 </div>
               </div>
 
@@ -941,7 +1075,7 @@ export default function ChatPage() {
                       onClick={() => { setShowNicknameModal(true); setShowHeaderOptions(false); }}
                       className="w-full text-left px-4 py-3 hover:bg-gray-50 text-sm font-medium text-gray-800"
                     >
-                      Change Name
+                      {t('changeName')}
                     </button>
                   </div>
                 )}
@@ -952,7 +1086,7 @@ export default function ChatPage() {
                         onClick={handleToggleBlock}
                         className="w-full text-left px-4 py-3 hover:bg-gray-100 text-sm font-medium text-gray-800"
                       >
-                        {isBlockedByMe ? 'Unblock User' : 'Block User'}
+                        {isBlockedByMe ? t('unblockUser') : t('blockUser')}
                       </button>
                     )}
                     {selectedConversation.room_type === 'group' && (
@@ -961,7 +1095,7 @@ export default function ChatPage() {
                           onClick={() => { setShowAddMemberModal(true); setShowChatOptions(false); }}
                           className="w-full text-left px-4 py-3 hover:bg-gray-100 text-sm font-medium text-gray-800"
                         >
-                          Add Member
+                          {t('addMember')}
                         </button>
                         <button
                           onClick={() => {
@@ -973,13 +1107,13 @@ export default function ChatPage() {
                           }}
                           className="w-full text-left px-4 py-3 hover:bg-gray-100 text-sm font-medium text-gray-800"
                         >
-                          View Member
+                          {t('viewMember')}
                         </button>
                         <button
                           onClick={handleExitGroup}
                           className="w-full text-left px-4 py-3 hover:bg-gray-100 text-sm font-medium text-red-600"
                         >
-                          Exit Group
+                          {t('exitGroup')}
                         </button>
                       </>
                     )}
@@ -987,7 +1121,7 @@ export default function ChatPage() {
                       onClick={() => setShowClearChatModal(true)}
                       className="w-full text-left px-4 py-3 hover:bg-gray-100 text-sm font-medium text-red-600 border-t"
                     >
-                      Clear Chat
+                      {t('clearChat')}
                     </button>
                   </div>
                 )}
@@ -1055,7 +1189,7 @@ export default function ChatPage() {
                                   }}
                                   className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                                 >
-                                  Edit Message
+                                  {t('edit')}
                                 </button>
                                 <button
                                   onClick={() => {
@@ -1065,7 +1199,7 @@ export default function ChatPage() {
                                   }}
                                   className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors border-t border-gray-50"
                                 >
-                                  Delete Message
+                                  {t('delete')}
                                 </button>
                               </div>
                             )}
@@ -1082,8 +1216,8 @@ export default function ChatPage() {
                               autoFocus
                             />
                             <div className="flex justify-end space-x-2">
-                              <button onClick={() => setEditingMessageId(null)} className="text-xs text-gray-500">Cancel</button>
-                              <button onClick={handleEditMessage} className="text-xs font-bold text-orange-600">Save</button>
+                              <button onClick={() => setEditingMessageId(null)} className="text-xs text-gray-500">{t('cancel')}</button>
+                              <button onClick={handleEditMessage} className="text-xs font-bold text-orange-600">{t('save')}</button>
                             </div>
                           </div>
                         ) : (
@@ -1194,7 +1328,7 @@ export default function ChatPage() {
               {messages.length === 0 && (
                 <div className="text-center py-12">
                   <MessageCircle className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500">No messages yet. Start a conversation!</p>
+                  <p className="text-gray-500">{t('noMessages')}. {t('startChat')}!</p>
                 </div>
               )}
 
@@ -1208,8 +1342,8 @@ export default function ChatPage() {
                   </div>
                   <span>
                     {selectedConversation.room_type === 'group'
-                      ? `${typingUsers.size} people typing...`
-                      : 'typing...'
+                      ? `${typingUsers.size} ${t('peopleTyping')}`
+                      : t('typing')
                     }
                   </span>
                 </div>
@@ -1220,7 +1354,7 @@ export default function ChatPage() {
             {/* Message Input */}
             {isBlockedByMe || amIBlocked ? (
               <div className="p-4 bg-gray-100 border-t flex items-center justify-center text-gray-500 shrink-0">
-                <p>{isBlockedByMe ? 'You have blocked this user.' : 'You cannot reply to this conversation.'}</p>
+                <p>{isBlockedByMe ? t('youHaveBlocked') : t('cannotReply')}</p>
               </div>
             ) : (
               <form onSubmit={handleSendMessage} className="p-4 bg-white border-t shrink-0">
@@ -1269,7 +1403,7 @@ export default function ChatPage() {
           <div className="flex-1 flex items-center justify-center bg-gray-50">
             <div className="text-center">
               <MessageCircle className="h-24 w-24 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500 text-lg">Select a conversation to start messaging</p>
+              <p className="text-gray-500 text-lg">{t('selectConversation')}</p>
             </div>
           </div>
         )}
@@ -1280,10 +1414,10 @@ export default function ChatPage() {
         showAddMemberModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-100 p-4">
             <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm transform transition-all">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Add Group Member</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-4">{t('addMember')}</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1"> Mobile Number</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('mobileNumber')}</label>
                   <div className="relative">
                     <input
                       type="text"
@@ -1294,7 +1428,7 @@ export default function ChatPage() {
                         setAddMemberUserId(val); // Fallback for manual entry
                         handleSearchSuggestions(val);
                       }}
-                      placeholder="Enter user ID or mobile number"
+                      placeholder={t('enterMobileNumber')}
                       className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-hidden"
                     />
 
@@ -1325,13 +1459,13 @@ export default function ChatPage() {
                     onClick={() => setShowAddMemberModal(false)}
                     className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-colors"
                   >
-                    Cancel
+                    {t('cancel')}
                   </button>
                   <button
                     onClick={handleAddMember}
                     className="flex-1 px-4 py-2 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 text-white rounded-xl hover:from-orange-700 hover:to-amber-700 font-bold shadow-lg transition-all"
                   >
-                    Add
+                    {t('add')}
                   </button>
                 </div>
               </div>
@@ -1349,22 +1483,22 @@ export default function ChatPage() {
                 <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
                   <Trash2 className="h-8 w-8 text-red-600" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">Clear Chat?</h3>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">{t('clearChatConfirm')}</h3>
                 <p className="text-gray-500 mb-6 text-sm">
-                  This will permanently remove all messages from this conversation. This action cannot be undone.
+                  {t('clearChatDesc')}
                 </p>
                 <div className="flex w-full space-x-3">
                   <button
                     onClick={() => setShowClearChatModal(false)}
                     className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-colors"
                   >
-                    Cancel
+                    {t('cancel')}
                   </button>
                   <button
                     onClick={handleDeleteConversation}
                     className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 font-bold shadow-lg transition-all"
                   >
-                    Clear Chat
+                    {t('clearChat')}
                   </button>
                 </div>
               </div>
@@ -1382,22 +1516,22 @@ export default function ChatPage() {
                 <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
                   <Trash2 className="h-8 w-8 text-red-600" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">Delete message?</h3>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">{t('deleteMessageConfirm')}</h3>
                 <p className="text-gray-500 mb-6 text-sm">
-                  Are you sure you want to delete this message? This action cannot be undone.
+                  {t('deleteMessageDesc')}
                 </p>
                 <div className="flex w-full space-x-3">
                   <button
                     onClick={() => setShowMsgDeleteModal(false)}
                     className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-colors"
                   >
-                    Cancel
+                    {t('cancel')}
                   </button>
                   <button
                     onClick={handleDeleteMessage}
                     className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 font-bold shadow-lg transition-all"
                   >
-                    Delete
+                    {t('delete')}
                   </button>
                 </div>
               </div>
@@ -1411,15 +1545,15 @@ export default function ChatPage() {
         showNicknameModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-100 p-4">
             <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm transform transition-all">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Set Nickname</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-4">{t('setNickname')}</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nickname</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('nickname') || 'Nickname'}</label>
                   <input
                     type="text"
                     value={nicknameValue}
                     onChange={(e) => setNicknameValue(e.target.value)}
-                    placeholder="Enter contact nickname"
+                    placeholder={t('enterNickname')}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-hidden"
                     autoFocus
                   />
@@ -1429,13 +1563,13 @@ export default function ChatPage() {
                     onClick={() => setShowNicknameModal(false)}
                     className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-colors"
                   >
-                    Cancel
+                    {t('cancel')}
                   </button>
                   <button
                     onClick={handleUpdateNickname}
                     className="flex-1 px-4 py-2 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 text-white rounded-xl hover:from-orange-700 hover:to-amber-700 font-bold shadow-lg transition-all"
                   >
-                    Save
+                    {t('save')}
                   </button>
                 </div>
               </div>
@@ -1449,20 +1583,20 @@ export default function ChatPage() {
         showNewChatModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-100 p-4">
             <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm relative transform transition-all">
-              <h3 className="text-xl font-bold mb-4">Start New Chat</h3>
+              <h3 className="text-xl font-bold mb-4">{t('startNewChat')}</h3>
 
               <div className="flex space-x-2 mb-4">
                 <button
                   onClick={() => setIsGroupChat(false)}
                   className={`flex-1 py-1 text-sm rounded ${!isGroupChat ? 'bg-orange-100 text-orange-700 font-bold' : 'bg-gray-100 text-gray-500'}`}
                 >
-                  Direct
+                  {t('direct')}
                 </button>
                 <button
                   onClick={() => setIsGroupChat(true)}
                   className={`flex-1 py-1 text-sm rounded ${isGroupChat ? 'bg-orange-100 text-orange-700 font-bold' : 'bg-gray-100 text-gray-500'}`}
                 >
-                  Group
+                  {t('group')}
                 </button>
               </div>
 
@@ -1476,7 +1610,7 @@ export default function ChatPage() {
                   <div className="relative">
                     <input
                       type="text"
-                      placeholder="Enter user ID or mobile number"
+                      placeholder={t('enterMobileNumber')}
                       value={newChatUserId}
                       onChange={(e) => {
                         const val = e.target.value;
@@ -1518,13 +1652,13 @@ export default function ChatPage() {
                       onClick={() => setShowNewChatModal(false)}
                       className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                     >
-                      Cancel
+                      {t('cancel')}
                     </button>
                     <button
                       type="submit"
                       className="flex-1 px-4 py-2 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 text-white rounded-lg hover:from-orange-700 hover:to-amber-700"
                     >
-                      Start Chat
+                      {t('startChat')}
                     </button>
                   </div>
                 </form>
@@ -1537,7 +1671,7 @@ export default function ChatPage() {
                 >
                   <input
                     type="text"
-                    placeholder="Group Name"
+                    placeholder={t('groupName')}
                     value={newGroupName}
                     onChange={(e) => setNewGroupName(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent mb-2"
@@ -1546,7 +1680,7 @@ export default function ChatPage() {
                   <div className="relative mb-4">
                     <input
                       type="text"
-                      placeholder="Enter separated mobile numbers"
+                      placeholder={t('enterMobileNumbers')}
                       value={newGroupMembers}
                       onChange={(e) => {
                         const val = e.target.value;
@@ -1593,13 +1727,13 @@ export default function ChatPage() {
                       onClick={() => setShowNewChatModal(false)}
                       className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                     >
-                      Cancel
+                      {t('cancel')}
                     </button>
                     <button
                       type="submit"
                       className="flex-1 px-4 py-2 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 text-white rounded-lg hover:from-orange-700 hover:to-amber-700"
                     >
-                      Create Group
+                      {t('createGroup')}
                     </button>
                   </div>
                 </form>
@@ -1614,7 +1748,7 @@ export default function ChatPage() {
         showBlockedUsersModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-96 relative">
-              <h3 className="text-xl font-bold mb-4">Blocked Users</h3>
+              <h3 className="text-xl font-bold mb-4">{t('blockedUsers')}</h3>
               <div className="max-h-64 overflow-y-auto mb-4 space-y-2">
                 {blockedUsers.length > 0 ? (
                   blockedUsers.map((bu, idx) => {
@@ -1633,20 +1767,20 @@ export default function ChatPage() {
                           onClick={() => handleUnblockFromList(userId)}
                           className="px-3 py-1 bg-orange-100 text-orange-700 text-xs font-bold rounded hover:bg-orange-200"
                         >
-                          Unblock
+                          {t('unblockUser')}
                         </button>
                       </div>
                     );
                   })
                 ) : (
-                  <p className="text-gray-500 text-sm text-center py-4">No blocked users.</p>
+                  <p className="text-gray-500 text-sm text-center py-4">{t('noBlockedUsers')}</p>
                 )}
               </div>
               <button
                 onClick={() => setShowBlockedUsersModal(false)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-gray-700"
               >
-                Close
+                {t('close')}
               </button>
             </div>
           </div>
@@ -1659,7 +1793,7 @@ export default function ChatPage() {
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-100 p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md transform transition-all animate-in zoom-in-95 duration-200">
               <div className="flex items-center justify-between mb-4 border-b pb-3">
-                <h3 className="text-xl font-bold text-gray-900">Group Members</h3>
+                <h3 className="text-xl font-bold text-gray-900">{t('groupMembers')}</h3>
                 <button
                   onClick={() => setShowViewMembersModal(false)}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -1672,20 +1806,20 @@ export default function ChatPage() {
                 {fetchingMembers ? (
                   <div className="flex flex-col items-center justify-center py-8">
                     <Loader2 className="h-8 w-8 text-orange-600 animate-spin mb-2" />
-                    <p className="text-sm text-gray-500 font-medium">Loading members...</p>
+                    <p className="text-sm text-gray-500 font-medium">{t('loadingMembers')}</p>
                   </div>
                 ) : groupMembers.length > 0 ? (
                   groupMembers.map((member: any) => (
                     <div key={member.user_id || member.id} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 hover:bg-orange-50 transition-colors border border-transparent hover:border-orange-100 group">
                       <div className="flex items-center space-x-3">
                         <div className="w-10 h-10 bg-linear-to-br from-amber-800 to-amber-700 rounded-full flex items-center justify-center shadow-sm text-white font-bold shrink-0">
-                          {member.profile_name?.charAt(0).toUpperCase() || member.name?.charAt(0).toUpperCase() || member.mobile_number?.charAt(0) || 'U'}
+                          {member.first_name?.charAt(0).toUpperCase() || member.profile_name?.charAt(0).toUpperCase() || member.name?.charAt(0).toUpperCase() || member.mobile_number?.charAt(0) || 'U'}
                         </div>
                         <div className="min-w-0 text-left">
                           <p className="font-bold text-gray-900 truncate">
-                            {Number(member.user_id || member.id) === Number(user?.id) ? 'You' : (member.profile_name || member.name || 'User')}
+                            {Number(member.user_id || member.id) === Number(user?.id) ? t('you') : (member.first_name || member.profile_name || member.name || t('user'))}
                             {Number(member.user_id || member.id) === Number(selectedConversation?.created_by) && (
-                              <span className="ml-2 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-black rounded-md uppercase tracking-wider">Admin</span>
+                              <span className="ml-2 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-black rounded-md uppercase tracking-wider">{t('admin')}</span>
                             )}
                           </p>
                           <p className="text-xs text-gray-500 font-medium">{member.mobile_number}</p>
@@ -1705,7 +1839,7 @@ export default function ChatPage() {
                             ) : (
                               <>
                                 <Trash2 className="h-4 w-4" />
-                                <span className="text-xs font-bold uppercase tracking-wider">Remove</span>
+                                <span className="text-xs font-bold uppercase tracking-wider">{t('remove')}</span>
                               </>
                             )}
                           </button>
@@ -1715,7 +1849,7 @@ export default function ChatPage() {
                 ) : (
                   <div className="text-center py-8">
                     <Users className="h-12 w-12 text-gray-200 mx-auto mb-2" />
-                    <p className="text-gray-500">No members found</p>
+                    <p className="text-gray-500">{t('noMembersFound')}</p>
                   </div>
                 )}
               </div>
@@ -1725,7 +1859,7 @@ export default function ChatPage() {
                   onClick={() => setShowViewMembersModal(false)}
                   className="px-6 py-2.5 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 text-white rounded-xl hover:from-orange-700 hover:to-amber-700 font-bold shadow-lg transition-all active:scale-95"
                 >
-                  Close
+                  {t('close')}
                 </button>
               </div>
             </div>
@@ -1741,9 +1875,9 @@ export default function ChatPage() {
               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Users className="h-8 w-8 text-red-600" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Exit Group</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">{t('exitGroup')}</h3>
               <p className="text-gray-600 text-sm">
-                Are you sure you want to exit this group? You will need to be added again to rejoin.
+                {t('exitGroupDesc')}
               </p>
             </div>
 
@@ -1752,13 +1886,13 @@ export default function ChatPage() {
                 onClick={() => setShowExitGroupModal(false)}
                 className="flex-1 px-4 py-3 border border-gray-300 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-colors"
               >
-                Cancel
+                {t('cancel')}
               </button>
               <button
                 onClick={confirmExitGroup}
                 className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors"
               >
-                Exit Group
+                {t('exitGroup')}
               </button>
             </div>
           </div>

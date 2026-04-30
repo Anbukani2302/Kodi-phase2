@@ -87,12 +87,12 @@ export default function OneToConnectPage() {
 
     const handleFindPath = async () => {
         if (!selectedFrom || !selectedTo) {
-            toast.error(isTamil ? 'இருவரையும் தேர்ந்தெடுக்கவும்' : 'Please select both people');
+            toast.error(t('selectBothPeople'));
             return;
         }
 
         if (selectedFrom.id === selectedTo.id) {
-            toast.error(isTamil ? 'இருவரும் ஒரே நபர்' : 'Both people are the same');
+            toast.error(t('bothSamePerson'));
             return;
         }
 
@@ -111,12 +111,12 @@ export default function OneToConnectPage() {
                 setPath(response.data.path);
             } else {
                 setPath([]);
-                toast.error(isTamil ? 'உறவுமுறை கண்டறியப்படவில்லை' : 'No relationship found');
+                toast.error(t('noRelationshipFound'));
             }
         } catch (error: any) {
             console.error("Path finding error:", error);
             setPath([]);
-            toast.error(isTamil ? 'உறவுமுறை கண்டறிய முடியவில்லை' : 'Could not find relationship path');
+            toast.error(t('couldNotFindPath'));
         } finally {
             setIsFindingPath(false);
         }
@@ -190,8 +190,8 @@ export default function OneToConnectPage() {
                                     readOnly={!!selectedFrom}
                                     placeholder={isTamil ? 'பெயர் அல்லது மொபைல் எண்...' : 'Search name or mobile...'}
                                     className={`w-full pl-12 pr-12 py-4 bg-gray-50 border-2 rounded-2xl focus:outline-none transition-all ${selectedFrom
-                                            ? 'border-amber-500 bg-amber-50/50 text-amber-900 font-bold'
-                                            : 'border-gray-100 focus:border-amber-400 focus:bg-white text-gray-800'
+                                        ? 'border-amber-500 bg-amber-50/50 text-amber-900 font-bold'
+                                        : 'border-gray-100 focus:border-amber-400 focus:bg-white text-gray-800'
                                         }`}
                                 />
                                 {selectedFrom && (
@@ -261,8 +261,8 @@ export default function OneToConnectPage() {
                                     readOnly={!!selectedTo}
                                     placeholder={isTamil ? 'பெயர் அல்லது மொபைல் எண்...' : 'Search name or mobile...'}
                                     className={`w-full pl-12 pr-12 py-4 bg-gray-50 border-2 rounded-2xl focus:outline-none transition-all ${selectedTo
-                                            ? 'border-amber-500 bg-amber-50/50 text-amber-900 font-bold'
-                                            : 'border-gray-100 focus:border-amber-400 focus:bg-white text-gray-800'
+                                        ? 'border-amber-500 bg-amber-50/50 text-amber-900 font-bold'
+                                        : 'border-gray-100 focus:border-amber-400 focus:bg-white text-gray-800'
                                         }`}
                                 />
                                 {selectedTo && (
@@ -337,7 +337,7 @@ export default function OneToConnectPage() {
                         <motion.div
                             initial={{ opacity: 0, y: 40 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="bg-white rounded-4xl shadow-2xl border border-amber-100 p-8 min-h-[500px] relative overflow-hidden"
+                            className="bg-white rounded-4xl shadow-2xl border border-amber-100 p-8 min-h-125 relative overflow-hidden"
                         >
                             {path.length > 0 ? (
                                 <div className="relative flex flex-col items-center py-12">

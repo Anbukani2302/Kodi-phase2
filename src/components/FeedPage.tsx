@@ -35,7 +35,7 @@ import {
   FileText,
   ChevronDown
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { postService, Post as PostType } from '../services/postService';
 import { eventService, Event, EventType, RSVPData, eventHelpers } from '../services/eventService';
@@ -77,11 +77,13 @@ interface EventComment {
   parent?: number;
   replies?: EventComment[];
   user_name?: string;
+  user_first_name?: string;
 }
 
 export default function FeedPage() {
   const { t, language } = useLanguage();
   const navigate = useNavigate();
+  const { id: postId } = useParams();
 
   // Profile state
   const [profile, setProfile] = useState<Partial<UserProfile> | null>(null);
@@ -194,6 +196,94 @@ export default function FeedPage() {
     }
   }, [activeTab, eventFilter, postFilter]);
 
+  useEffect(() => {
+    if (postId) {
+      setActiveTab('posts');
+    }
+  }, [postId]);
+
+  useEffect(() => {
+    if (postId && posts.length > 0) {
+      const postElement = document.getElementById(`post-${postId}`);
+      if (postElement) {
+        postElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Highlight the post temporarily
+        postElement.style.border = '3px solid #3b82f6';
+        postElement.style.boxShadow = '0 0 20px rgba(59, 130, 246, 0.5)';
+        setTimeout(() => {
+          postElement.style.border = '';
+          postElement.style.boxShadow = '';
+        }, 3000);
+      }
+    }
+  }, [postId, posts]);
+
+  // Find post by content when navigating from notifications
+  // Handle URL parameters for specific tabs and items
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    const eventIdParam = urlParams.get('eventId');
+    const postIdParam = urlParams.get('postId');
+    const contentPreview = urlParams.get('content');
+
+    // Handle tab switching
+    if (tabParam === 'events') {
+      setActiveTab('events');
+    } else if (tabParam === 'posts') {
+      setActiveTab('posts');
+    }
+
+    // Handle event scrolling
+    if (eventIdParam && activeTab === 'events' && events.length > 0) {
+      const eventElement = document.getElementById(`event-${eventIdParam}`);
+      if (eventElement) {
+        eventElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Highlight the event temporarily
+        eventElement.style.border = '3px solid #f59e0b';
+        eventElement.style.boxShadow = '0 0 20px rgba(245, 158, 11, 0.5)';
+        setTimeout(() => {
+          eventElement.style.border = '';
+          eventElement.style.boxShadow = '';
+        }, 3000);
+      }
+    }
+
+    // Handle post scrolling from query param (fallback for /home?postId=...)
+    if (postIdParam && activeTab === 'posts' && posts.length > 0) {
+      const postElement = document.getElementById(`post-${postIdParam}`);
+      if (postElement) {
+        postElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        postElement.style.border = '3px solid #3b82f6';
+        postElement.style.boxShadow = '0 0 20px rgba(59, 130, 246, 0.5)';
+        setTimeout(() => {
+          postElement.style.border = '';
+          postElement.style.boxShadow = '';
+        }, 3000);
+      }
+    }
+
+    // Existing content preview logic
+    if (contentPreview && posts.length > 0) {
+      const targetPost = posts.find(post =>
+        post.content && post.content.includes(contentPreview)
+      );
+
+      if (targetPost) {
+        const postElement = document.getElementById(`post-${targetPost.id}`);
+        if (postElement) {
+          postElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          postElement.style.border = '3px solid #3b82f6';
+          postElement.style.boxShadow = '0 0 20px rgba(59, 130, 246, 0.5)';
+          setTimeout(() => {
+            postElement.style.border = '';
+            postElement.style.boxShadow = '';
+          }, 3000);
+        }
+      }
+    }
+  }, [posts, events, activeTab]);
+
   const loadProfile = async () => {
     try {
       const data = await authService.getMyProfile();
@@ -271,7 +361,11 @@ export default function FeedPage() {
           response = await eventService.getUpcomingEvents();
       }
 
-      setEvents(Array.isArray(response) ? response : []);
+      if (eventFilter === 'myreplies' && response && response.replies) {
+        setEvents(response.replies);
+      } else {
+        setEvents(Array.isArray(response) ? response : []);
+      }
     } catch (error) {
       console.error('Failed to load events:', error);
       setEvents([]);
@@ -686,17 +780,17 @@ export default function FeedPage() {
   const handlePostLike = (postId: number, data: any) => {
     setPosts(prevPosts => prevPosts.map(post =>
       post.id === postId
-        ? { 
-            ...post, 
-            user_interaction: { 
-              ...post.user_interaction, 
-              is_liked: data.is_liked 
-            },
-            engagement: {
-              ...post.engagement,
-              likes_count: data.likes_count
-            }
+        ? {
+          ...post,
+          user_interaction: {
+            ...post.user_interaction,
+            is_liked: data.is_liked
+          },
+          engagement: {
+            ...post.engagement,
+            likes_count: data.likes_count
           }
+        }
         : post
     ));
   };
@@ -704,13 +798,13 @@ export default function FeedPage() {
   const handlePostSave = (postId: number, data: any) => {
     setPosts(prevPosts => prevPosts.map(post =>
       post.id === postId
-        ? { 
-            ...post, 
-            user_interaction: { 
-              ...post.user_interaction, 
-              is_saved: data.is_saved 
-            }
+        ? {
+          ...post,
+          user_interaction: {
+            ...post.user_interaction,
+            is_saved: data.is_saved
           }
+        }
         : post
     ));
   };
@@ -718,13 +812,13 @@ export default function FeedPage() {
   const handlePostShare = (postId: number) => {
     setPosts(prevPosts => prevPosts.map(post =>
       post.id === postId
-        ? { 
-            ...post, 
-            engagement: {
-              ...post.engagement,
-              shares_count: (post.engagement?.shares_count || 0) + 1
-            }
+        ? {
+          ...post,
+          engagement: {
+            ...post.engagement,
+            shares_count: (post.engagement?.shares_count || 0) + 1
           }
+        }
         : post
     ));
   };
@@ -886,7 +980,7 @@ export default function FeedPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="h-12 w-12 text-amber-600 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 font-medium">Loading your feed...</p>
+          <p className="text-gray-600 font-medium">{language === 'ta' ? 'உங்கள் ஊட்டத்தை ஏற்றுகிறது...' : 'Loading your feed...'}</p>
         </div>
       </div>
     );
@@ -894,11 +988,11 @@ export default function FeedPage() {
 
   return (
     <div className="min-h-screen bg-linear-to-br from-amber-50 via-white to-orange-50 py-8 px-4">
-      <div className="max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 relative">
+      <div className="max-w-7xl mx-auto h-[calc(100vh-4rem)]">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 relative h-full">
 
           {/* Sidebar - Navigation Links */}
-          <div className="hidden lg:block lg:col-span-3 sticky top-28 self-start h-[calc(100vh-7.5rem)] overflow-y-auto no-scrollbar pb-10 space-y-6">
+          <div className="hidden lg:block lg:col-span-3 sticky top-8 self-start h-[calc(100vh-4rem)] overflow-hidden pb-10 space-y-6">
             <div className="bg-white/80 backdrop-blur-md rounded-2xl p-4 shadow-sm border border-amber-100">
               <div className="flex flex-col items-center text-center space-y-3">
                 <div className="relative group">
@@ -924,23 +1018,25 @@ export default function FeedPage() {
                   onClick={() => navigate('/profile')}
                   className="w-full mt-2 py-2 px-4 bg-amber-50 text-amber-700 rounded-xl text-sm font-semibold hover:bg-amber-100 transition-colors border border-amber-100"
                 >
-                  View Profile
+                  {language === 'ta' ? 'சுயவிவரத்தைக் காண்க' : 'View Profile'}
                 </button>
               </div>
             </div>
 
             <div className="bg-white/70 backdrop-blur-md rounded-2xl p-4 shadow-sm border border-amber-100 space-y-1">
-              <SidebarLink icon={<Home className="h-5 w-5" />} label="Home Feed" active={activeTab === 'posts'} onClick={() => setActiveTab('posts')} />
-              <SidebarLink icon={<Users className="h-5 w-5" />} label="My Connections" onClick={() => navigate('/connections')} />
-              <SidebarLink icon={<MessageCircle className="h-5 w-5" />} label="Messenger" onClick={() => navigate('/chat')} />
-              <SidebarLink icon={<Sparkles className="h-5 w-5" />} label="Genealogy" onClick={() => navigate('/genealogy')} />
+              <SidebarLink icon={<Home className="h-5 w-5" />} label={language === 'ta' ? 'முகப்பு ஊட்டம்' : 'Home Feed'} active={activeTab === 'posts'} onClick={() => setActiveTab('posts')} />
+              <SidebarLink icon={<Users className="h-5 w-5" />} label={language === 'ta' ? 'எனது தொடர்புகள்' : 'My Connections'} onClick={() => navigate('/connections')} />
+              <SidebarLink icon={<MessageCircle className="h-5 w-5" />} label={language === 'ta' ? 'செய்தி அனுப்புபவர்' : 'Messenger'} onClick={() => navigate('/chat')} />
+              <SidebarLink icon={<Sparkles className="h-5 w-5" />} label={language === 'ta' ? 'கொடி வழி வரைபடம்' : 'Genealogy'} onClick={() => navigate('/genealogy')} />
               <hr className="my-2 border-amber-50" />
-              <SidebarLink icon={<Calendar className="h-5 w-5" />} label="Events" active={activeTab === 'events'} onClick={() => setActiveTab('events')} />
+              <SidebarLink icon={<Calendar className="h-5 w-5" />} label={language === 'ta' ? 'நிகழ்வுகள்' : 'Events'} active={activeTab === 'events'} onClick={() => setActiveTab('events')} />
             </div>
+
+            
           </div>
 
           {/* Main Content Column */}
-          <div className="lg:col-span-6 space-y-6">
+          <div className="lg:col-span-6 space-y-6 h-[calc(100vh-4rem)] overflow-y-auto no-scrollbar pb-10">
 
             {/* Success Message Toast */}
             {showSuccessMessage && (
@@ -950,7 +1046,7 @@ export default function FeedPage() {
                     <Check className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <p className="text-amber-900 font-bold">Success!</p>
+                    <p className="text-amber-900 font-bold">{language === 'ta' ? 'வெற்றி!' : 'Success!'}</p>
                     <p className="text-amber-800 text-sm font-medium">{successMessage}</p>
                   </div>
                   <button onClick={() => setShowSuccessMessage(false)} className="text-amber-400 hover:text-amber-600 ml-2">
@@ -968,8 +1064,8 @@ export default function FeedPage() {
                     <Check className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <p className="text-green-900 font-bold">Success!</p>
-                    <p className="text-green-800 text-sm font-medium">Report sent successfully</p>
+                    <p className="text-green-900 font-bold">{language === 'ta' ? 'வெற்றி!' : 'Success!'}</p>
+                    <p className="text-green-800 text-sm font-medium">{language === 'ta' ? 'அறிக்கை வெற்றிகரமாக அனுப்பப்பட்டது' : 'Report sent successfully'}</p>
                   </div>
                   <button onClick={() => setShowReportSuccess(false)} className="text-green-400 hover:text-green-600 ml-2">
                     <X className="h-4 w-4" />
@@ -988,7 +1084,7 @@ export default function FeedPage() {
                         <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
                           <Edit2 className="h-6 w-6" />
                         </div>
-                        <h2 className="text-2xl font-bold">Edit Event</h2>
+                        <h2 className="text-2xl font-bold">{language === 'ta' ? 'நிகழ்வைத் திருத்து' : 'Edit Event'}</h2>
                       </div>
                       <button
                         onClick={() => setShowEditModal(false)}
@@ -1002,7 +1098,7 @@ export default function FeedPage() {
                   <form onSubmit={handleUpdateEvent} className="p-6 space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Event Title <span className="text-red-500">*</span>
+                        {language === 'ta' ? 'நிகழ்வு தலைப்பு' : 'Event Title'} <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
@@ -1015,7 +1111,7 @@ export default function FeedPage() {
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Description <span className="text-red-500">*</span>
+                        {language === 'ta' ? 'விளக்கம்' : 'Description'} <span className="text-red-500">*</span>
                       </label>
                       <textarea
                         value={editDescription}
@@ -1029,7 +1125,7 @@ export default function FeedPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Date & Time <span className="text-red-500">*</span>
+                          {language === 'ta' ? 'தேதி மற்றும் நேரம்' : 'Date & Time'} <span className="text-red-500">*</span>
                         </label>
                         <div className="flex items-center space-x-2 px-4 py-3 border border-gray-200 rounded-xl">
                           <Clock className="h-5 w-5 text-purple-400" />
@@ -1045,7 +1141,7 @@ export default function FeedPage() {
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Location
+                          {language === 'ta' ? 'இடம்' : 'Location'}
                         </label>
                         <div className="flex items-center space-x-2 px-4 py-3 border border-gray-200 rounded-xl">
                           <MapPin className="h-5 w-5 text-purple-400" />
@@ -1054,7 +1150,7 @@ export default function FeedPage() {
                             value={editLocation}
                             onChange={(e) => setEditLocation(e.target.value)}
                             className="flex-1 bg-transparent focus:outline-none"
-                            placeholder="Add venue or online link"
+                            placeholder={language === 'ta' ? 'இடம் அல்லது ஆன்லைன் லிங்க் சேர்க்கவும்' : 'Add venue or online link'}
                           />
                         </div>
                       </div>
@@ -1063,7 +1159,7 @@ export default function FeedPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Event Type <span className="text-red-500">*</span>
+                          {language === 'ta' ? 'நிகழ்வு வகை' : 'Event Type'} <span className="text-red-500">*</span>
                         </label>
                         <select
                           value={editEventType}
@@ -1071,7 +1167,7 @@ export default function FeedPage() {
                           className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500"
                           required
                         >
-                          <option value="">Select event type</option>
+                          <option value="">{language === 'ta' ? 'நிகழ்வு வகையைத் தேர்ந்தெடுக்கவும்' : 'Select event type'}</option>
                           {eventTypes.map(type => (
                             <option key={type.id} value={type.id}>{type.title}</option>
                           ))}
@@ -1080,7 +1176,7 @@ export default function FeedPage() {
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Visibility <span className="text-red-500">*</span>
+                          {language === 'ta' ? 'பார்வை' : 'Visibility'} <span className="text-red-500">*</span>
                         </label>
                         <select
                           value={editVisibility}
@@ -1088,17 +1184,17 @@ export default function FeedPage() {
                           className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500"
                           required
                         >
-                          <option value="">Select visibility</option>
-                          <option value="1">Public (Everyone can see)</option>
-                          <option value="2">Private (Only me)</option>
-                          <option value="3">Connections (Only relatives)</option>
+                          <option value="">{language === 'ta' ? 'பார்வையைத் தேர்ந்தெடுக்கவும்' : 'Select visibility'}</option>
+                          <option value="1">{language === 'ta' ? 'பொது (அனைவரும் பார்க்கலாம்)' : 'Public (Everyone can see)'}</option>
+                          <option value="2">{language === 'ta' ? 'தனிப்பட்டவை (எனக்கு மட்டும்)' : 'Private (Only me)'}</option>
+                          <option value="3">{language === 'ta' ? 'தொடர்புகள் (உறவினர்கள் மட்டும்)' : 'Connections (Only relatives)'}</option>
                         </select>
                       </div>
                     </div>
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Cover Image
+                        {language === 'ta' ? 'அட்டைப் படம்' : 'Cover Image'}
                       </label>
                       {editImagePreview && (
                         <div className="relative mb-3">
@@ -1118,7 +1214,7 @@ export default function FeedPage() {
                       <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-amber-500 hover:bg-amber-50">
                         <div className="flex flex-col items-center justify-center">
                           <Camera className="h-8 w-8 text-gray-400 mb-2" />
-                          <p className="text-sm text-gray-500">Click to upload new cover image</p>
+                          <p className="text-sm text-gray-500">{language === 'ta' ? 'புதிய அட்டைப் படத்தைப் பதிவேற்ற கிளிக் செய்யவும்' : 'Click to upload new cover image'}</p>
                         </div>
                         <input
                           type="file"
@@ -1135,7 +1231,7 @@ export default function FeedPage() {
                         onClick={() => setShowEditModal(false)}
                         className="px-6 py-2 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50"
                       >
-                        Cancel
+                        {language === 'ta' ? 'ரத்துசெய்' : 'Cancel'}
                       </button>
                       <button
                         type="submit"
@@ -1145,12 +1241,12 @@ export default function FeedPage() {
                         {posting ? (
                           <>
                             <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                            Updating...
+                            {language === 'ta' ? 'புதுப்பிக்கிறது...' : 'Updating...'}
                           </>
                         ) : (
                           <>
                             <Check className="h-4 w-4 mr-2" />
-                            Update Event
+                            {language === 'ta' ? 'நிகழ்வைப் புதுப்பிக்கவும்' : 'Update Event'}
                           </>
                         )}
                       </button>
@@ -1168,9 +1264,9 @@ export default function FeedPage() {
                     <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <AlertCircle className="h-8 w-8 text-red-600" />
                     </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Delete Event?</h3>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">{language === 'ta' ? 'நிகழ்வை நீக்கவா?' : 'Delete Event?'}</h3>
                     <p className="text-gray-500 mb-6">
-                      Are you sure you want to delete this event? This action cannot be undone and all data will be permanently removed.
+                      {language === 'ta' ? 'இந்த நிகழ்வை நீக்க விரும்புகிறீர்களா? இந்த செயலை செயல்தவிர் செய்ய முடியாது மற்றும் அனைத்து தரவும் நிரந்தரமாக அகற்றப்படும்.' : 'Are you sure you want to delete this event? This action cannot be undone and all data will be permanently removed.'}
                     </p>
                     <div className="flex flex-col sm:flex-row gap-3">
                       <button
@@ -1180,7 +1276,7 @@ export default function FeedPage() {
                         }}
                         className="flex-1 px-6 py-2.5 border border-gray-200 rounded-xl text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
                       >
-                        No, Keep it
+                        {language === 'ta' ? 'இல்லை, வைத்திருக்கவும்' : 'No, Keep it'}
                       </button>
                       <button
                         onClick={confirmDeleteEvent}
@@ -1190,7 +1286,7 @@ export default function FeedPage() {
                         {deletingEvent ? (
                           <Loader2 className="h-5 w-5 animate-spin" />
                         ) : (
-                          'Yes, Delete'
+                          language === 'ta' ? 'ஆம், நீக்கு' : 'Yes, Delete'
                         )}
                       </button>
                     </div>
@@ -1210,7 +1306,7 @@ export default function FeedPage() {
                           <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
                             <Users className="h-6 w-6" />
                           </div>
-                          <h2 className="text-2xl font-bold">Guest List</h2>
+                          <h2 className="text-2xl font-bold">{language === 'ta' ? 'விருந்தினர் பட்டியல்' : 'Guest List'}</h2>
                         </div>
                         <p className="text-white/90 text-lg font-medium">{selectedEventForGuests.title}</p>
                         <div className="flex items-center space-x-4 mt-3 text-sm">
@@ -1220,7 +1316,7 @@ export default function FeedPage() {
                           </span>
                           <span className="flex items-center bg-white/20 px-3 py-1 rounded-full">
                             <MapPin className="h-3 w-3 mr-1" />
-                            {selectedEventForGuests.location_name || 'Location TBD'}
+                            {selectedEventForGuests.location_name || (language === 'ta' ? 'இடம் இன்னும் முடிவாகவில்லை' : 'Location TBD')}
                           </span>
                         </div>
                       </div>
@@ -1234,7 +1330,7 @@ export default function FeedPage() {
                   </div>
 
                   <div className="p-4 border-b border-gray-200 bg-gray-50">
-                    <div className="flex space-x-2">
+                    <div className="grid grid-cols-2 md:flex gap-2">
                       <button
                         onClick={() => handleGuestFilterChange('ALL')}
                         className={`flex-1 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 flex items-center justify-center space-x-2 ${guestFilter === 'ALL'
@@ -1243,7 +1339,7 @@ export default function FeedPage() {
                           }`}
                       >
                         <List className="h-4 w-4" />
-                        <span>All</span>
+                        <span>{language === 'ta' ? 'அனைத்தும்' : 'All'}</span>
                         <span className={`ml-1 px-2 py-0.5 rounded-full text-xs ${guestFilter === 'ALL' ? 'bg-white/20' : 'bg-gray-200'
                           }`}>
                           {guestStats.total}
@@ -1257,7 +1353,7 @@ export default function FeedPage() {
                           }`}
                       >
                         <CheckCircle className="h-4 w-4" />
-                        <span>Going</span>
+                        <span>{language === 'ta' ? 'வருகிறேன்' : 'Going'}</span>
                         <span className={`ml-1 px-2 py-0.5 rounded-full text-xs ${guestFilter === 'GOING' ? 'bg-white/20' : 'bg-green-200'
                           }`}>
                           {guestStats.going}
@@ -1271,7 +1367,7 @@ export default function FeedPage() {
                           }`}
                       >
                         <AlertCircle className="h-4 w-4" />
-                        <span>Maybe</span>
+                        <span>{language === 'ta' ? 'இருக்கலாம்' : 'Maybe'}</span>
                         <span className={`ml-1 px-2 py-0.5 rounded-full text-xs ${guestFilter === 'MAYBE' ? 'bg-white/20' : 'bg-yellow-200'
                           }`}>
                           {guestStats.maybe}
@@ -1285,7 +1381,7 @@ export default function FeedPage() {
                           }`}
                       >
                         <XCircle className="h-4 w-4" />
-                        <span>Not Going</span>
+                        <span>{language === 'ta' ? 'வரவில்லை' : 'Not Going'}</span>
                         <span className={`ml-1 px-2 py-0.5 rounded-full text-xs ${guestFilter === 'NOT_GOING' ? 'bg-white/20' : 'bg-red-200'
                           }`}>
                           {guestStats.notGoing}
@@ -1298,18 +1394,18 @@ export default function FeedPage() {
                     {loadingGuests ? (
                       <div className="text-center py-12">
                         <Loader2 className="h-12 w-12 animate-spin mx-auto text-amber-600" />
-                        <p className="text-gray-500 mt-4 font-medium">Loading guest list...</p>
+                        <p className="text-gray-500 mt-4 font-medium">{language === 'ta' ? 'விருந்தினர் பட்டியலை ஏற்றுகிறது...' : 'Loading guest list...'}</p>
                       </div>
                     ) : guests.length === 0 ? (
                       <div className="text-center py-16">
                         <div className="w-24 h-24 bg-linear-to-br from-amber-100 to-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
                           <Users className="h-12 w-12 text-amber-400" />
                         </div>
-                        <p className="text-gray-700 text-lg font-medium">No guests found</p>
+                        <p className="text-gray-700 text-lg font-medium">{language === 'ta' ? 'விருந்தினர்கள் யாரும் காணப்படவில்லை' : 'No guests found'}</p>
                         <p className="text-gray-500 text-sm mt-2">
                           {guestFilter === 'ALL'
-                            ? 'No one has responded to this event yet'
-                            : `No guests with "${guestFilter}" response`}
+                            ? (language === 'ta' ? 'இந்த நிகழ்வுக்கு இன்னும் யாரும் பதிலளிக்கவில்லை' : 'No one has responded to this event yet')
+                            : (language === 'ta' ? `"${guestFilter}" பதிலில் யாரும் இல்லை` : `No guests with "${guestFilter}" response`)}
                         </p>
                       </div>
                     ) : (
@@ -1318,10 +1414,9 @@ export default function FeedPage() {
                           // Use either status or response property
                           const guestResponse = guest.status || guest.response || 'NOT_GOING';
                           // Use available name properties
-                          const displayName = guest.user_full_name || guest.full_name || guest.user_name || 
-                            (guest.user?.full_name) || 'Anonymous';
+                          const displayName = guest.user_full_name || guest.full_name || guest.user_name || (guest as any).user_first_name || (guest.user?.full_name) || 'Anonymous';
                           const username = guest.user_name || (guest.user?.full_name) || '';
-                          
+
                           return (
                             <div
                               key={guest.id}
@@ -1383,13 +1478,13 @@ export default function FeedPage() {
 
                   <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
                     <div className="text-sm text-gray-500">
-                      Showing {guests.length} of {guestStats.total} responses
+                      {language === 'ta' ? `${guestStats.total} பதில்களில் ${guests.length} காட்டப்படுகின்றன` : `Showing ${guests.length} of ${guestStats.total} responses`}
                     </div>
                     <button
                       onClick={() => setShowGuestModal(false)}
                       className="px-6 py-2 bg-linear-to-r from-amber-600 to-orange-600 text-white rounded-xl hover:from-amber-700 hover:to-orange-700 transition-all duration-200 font-medium shadow-md hover:shadow-lg"
                     >
-                      Close
+                      {language === 'ta' ? 'மூடு' : 'Close'}
                     </button>
                   </div>
                 </div>
@@ -1404,7 +1499,7 @@ export default function FeedPage() {
                     <div className="flex justify-between items-center">
                       <div className="flex items-center space-x-2">
                         <Flag className="h-5 w-5" />
-                        <h2 className="text-xl font-bold">Report Event</h2>
+                        <h2 className="text-xl font-bold">{language === 'ta' ? 'நிகழ்வைப் புகாரளி' : 'Report Event'}</h2>
                       </div>
                       <button
                         onClick={() => {
@@ -1421,7 +1516,7 @@ export default function FeedPage() {
                   <form onSubmit={handleReportEvent} className="p-6 space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Reason for reporting <span className="text-red-500">*</span>
+                        {language === 'ta' ? 'புகாரளிப்பதற்கான காரணம்' : 'Reason for reporting'} <span className="text-red-500">*</span>
                       </label>
                       <select
                         value={reportReason}
@@ -1429,24 +1524,24 @@ export default function FeedPage() {
                         className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500"
                         required
                       >
-                        <option value="inappropriate">Inappropriate</option>
-                        <option value="spam">Spam</option>
-                        <option value="harassment">Harassment</option>
-                        <option value="fake">Fake</option>
-                        <option value="other">Other</option>
+                        <option value="inappropriate">{language === 'ta' ? 'பொருத்தமற்றது' : 'Inappropriate'}</option>
+                        <option value="spam">{language === 'ta' ? 'தேவையற்றது / ஸ்பேம்' : 'Spam'}</option>
+                        <option value="harassment">{language === 'ta' ? 'துன்புறுத்தல்' : 'Harassment'}</option>
+                        <option value="fake">{language === 'ta' ? 'போலியான தகவல்' : 'Fake'}</option>
+                        <option value="other">{language === 'ta' ? 'மற்றவை' : 'Other'}</option>
                       </select>
                     </div>
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Additional details (Optional)
+                        {language === 'ta' ? 'கூடுதல் விவரங்கள் (விருப்பமானவை)' : 'Additional details (Optional)'}
                       </label>
                       <textarea
                         value={reportDescription}
                         onChange={(e) => setReportDescription(e.target.value)}
                         className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500"
                         rows={3}
-                        placeholder="Please provide more context..."
+                        placeholder={language === 'ta' ? 'மேலும் விவரங்களை வழங்கவும்...' : 'Please provide more context...'}
                       />
                     </div>
 
@@ -1459,7 +1554,7 @@ export default function FeedPage() {
                         }}
                         className="px-4 py-2 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 font-medium"
                       >
-                        Cancel
+                        {language === 'ta' ? 'ரத்துசெய்' : 'Cancel'}
                       </button>
                       <button
                         type="submit"
@@ -1469,10 +1564,10 @@ export default function FeedPage() {
                         {sendingReport ? (
                           <>
                             <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                            Sending...
+                            {language === 'ta' ? 'அனுப்புகிறது...' : 'Sending...'}
                           </>
                         ) : (
-                          'Submit Report'
+                          language === 'ta' ? 'புகாரைச் சமர்ப்பி' : 'Submit Report'
                         )}
                       </button>
                     </div>
@@ -1552,14 +1647,14 @@ export default function FeedPage() {
 
                   {/* Visibility Selector */}
                   <div className="mt-4 flex items-center space-x-2">
-                    <label className="text-sm text-gray-600">Visibility:</label>
+                    <label className="text-sm text-gray-600">{language === 'ta' ? 'பார்வை:' : 'Visibility:'}</label>
                     <select
                       value={postVisibility}
                       onChange={(e) => setPostVisibility(e.target.value)}
                       className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
                     >
-                      <option value="public">🌍 Public</option>
-                      <option value="connections">👥 Connections</option>
+                      <option value="public">{language === 'ta' ? '🌍 பொது' : '🌍 Public'}</option>
+                      <option value="connections">{language === 'ta' ? '👥 தொடர்புகள்' : '👥 Connections'}</option>
                     </select>
                   </div>
 
@@ -1575,7 +1670,7 @@ export default function FeedPage() {
                           }`}
                       >
                         <Camera className="h-5 w-5" />
-                        <span className="text-sm font-medium">Photos</span>
+                        <span className="text-sm font-medium">{language === 'ta' ? 'புகைப்படங்கள்' : 'Photos'}</span>
                       </button>
                       {/* <button
                         type="button"
@@ -1595,9 +1690,9 @@ export default function FeedPage() {
                         <div className="flex flex-col items-center justify-center pt-5 pb-6">
                           <ImageIcon className="h-8 w-8 text-gray-400 group-hover:text-amber-500 mb-2 transition-colors" />
                           <p className="text-sm text-gray-500 group-hover:text-amber-600">
-                            Click to upload photos/videos
+                            {language === 'ta' ? 'புகைப்படங்கள்/வீடியோக்களை பதிவேற்ற கிளிக் செய்யவும்' : 'Click to upload photos/videos'}
                           </p>
-                          <p className="text-xs text-gray-400 mt-1">Up to 10 files</p>
+                          <p className="text-xs text-gray-400 mt-1">{language === 'ta' ? '10 கோப்புகள் வரை' : 'Up to 10 files'}</p>
                         </div>
                         <input
                           type="file"
@@ -1619,12 +1714,12 @@ export default function FeedPage() {
                       {posting ? (
                         <>
                           <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                          Posting...
+                          {language === 'ta' ? 'பதிவிடுகிறது...' : 'Posting...'}
                         </>
                       ) : (
                         <>
                           <Send className="h-4 w-4 mr-2" />
-                          Share Post
+                          {language === 'ta' ? 'பதிவைப் பகிரவும்' : 'Share Post'}
                         </>
                       )}
                     </button>
@@ -1637,27 +1732,27 @@ export default function FeedPage() {
                 <form onSubmit={handleCreatePost} className="p-6 space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Event Title <span className="text-red-500">*</span>
+                      {language === 'ta' ? 'நிகழ்வு தலைப்பு' : 'Event Title'} <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={eventTitle}
                       onChange={(e) => setEventTitle(e.target.value)}
                       className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50 hover:bg-white transition-colors"
-                      placeholder="e.g., Birthday Party, Wedding, Family Gathering"
+                      placeholder={language === 'ta' ? 'உதாரணமாக, பிறந்தநாள் விழா, திருமணம், குடும்ப ரீதியிலான ஒன்றுகூடல்' : "e.g., Birthday Party, Wedding, Family Gathering"}
                       required
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Description <span className="text-red-500">*</span>
+                      {language === 'ta' ? 'விளக்கம்' : 'Description'} <span className="text-red-500">*</span>
                     </label>
                     <textarea
                       value={eventDescription}
                       onChange={(e) => setEventDescription(e.target.value)}
                       className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent resize-none bg-gray-50 hover:bg-white transition-colors"
-                      placeholder="Tell people about your event..."
+                      placeholder={language === 'ta' ? 'உங்கள் நிகழ்வு பற்றி மக்களிடம் சொல்லுங்கள்...' : "Tell people about your event..."}
                       rows={3}
                       required
                     />
@@ -1666,7 +1761,7 @@ export default function FeedPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Date & Time <span className="text-red-500">*</span>
+                        {language === 'ta' ? 'தேதி மற்றும் நேரம்' : 'Date & Time'} <span className="text-red-500">*</span>
                       </label>
                       <div className="flex items-center space-x-2 px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 hover:bg-white transition-colors">
                         <Clock className="h-5 w-5 text-amber-400 shrink-0" />
@@ -1682,7 +1777,7 @@ export default function FeedPage() {
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Location
+                        {language === 'ta' ? 'இடம்' : 'Location'}
                       </label>
                       <div className="flex items-center space-x-2 px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 hover:bg-white transition-colors">
                         <MapPin className="h-5 w-5 text-amber-400 shrink-0" />
@@ -1691,7 +1786,7 @@ export default function FeedPage() {
                           value={eventLocation}
                           onChange={(e) => setEventLocation(e.target.value)}
                           className="flex-1 bg-transparent focus:outline-none"
-                          placeholder="Add venue or online link"
+                          placeholder={language === 'ta' ? 'இடம் அல்லது ஆன்லைன் லிங்க் சேர்க்கவும்' : "Add venue or online link"}
                         />
                       </div>
                     </div>
@@ -1702,7 +1797,7 @@ export default function FeedPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       <span className="flex items-center">
                         <Tag className="h-4 w-4 mr-1 text-amber-500" />
-                        Event Type <span className="text-red-500 ml-1">*</span>
+                        {language === 'ta' ? 'நிகழ்வு வகை' : 'Event Type'} <span className="text-red-500 ml-1">*</span>
                       </span>
                     </label>
                     <div className="relative">
@@ -1719,13 +1814,13 @@ export default function FeedPage() {
                                 {tempEventTypeTitle
                                   ? tempEventTypeTitle
                                   : eventType
-                                    ? eventTypes.find(t => t.id === eventType)?.title || 'Select type'
-                                    : 'Select type'
+                                    ? eventTypes.find(t => t.id === eventType)?.title || (language === 'ta' ? 'வகையைத் தேர்ந்தெடுக்கவும்' : 'Select type')
+                                    : language === 'ta' ? 'வகையைத் தேர்ந்தெடுக்கவும்' : 'Select type'
                                 }
                               </span>
                             </>
                           ) : (
-                            <span className="text-gray-500">Choose event type</span>
+                            <span className="text-gray-500">{language === 'ta' ? 'நிகழ்வு வகையைத் தேர்ந்தெடுக்கவும்' : 'Choose event type'}</span>
                           )}
                         </span>
                         <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform group-hover:text-amber-500 ${showEventTypeDropdown ? 'rotate-180' : ''}`} />
@@ -1739,7 +1834,7 @@ export default function FeedPage() {
                                 type="text"
                                 value={newEventType}
                                 onChange={(e) => setNewEventType(e.target.value)}
-                                placeholder="Search or create new type..."
+                                placeholder={language === 'ta' ? 'தேடவும் அல்லது புதிய வகையை உருவாக்கவும்...' : "Search or create new type..."}
                                 className="flex-1 px-3 py-2 border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white text-sm"
                                 autoFocus
                               />
@@ -1754,7 +1849,7 @@ export default function FeedPage() {
                                 ) : (
                                   <>
                                     <Plus className="h-4 w-4 mr-1" />
-                                    Create
+                                    {language === 'ta' ? 'உருவாக்கு' : 'Create'}
                                   </>
                                 )}
                               </button>
@@ -1763,7 +1858,7 @@ export default function FeedPage() {
 
                           {eventTypes.length > 0 && (
                             <div className="p-2 border-b border-gray-100 bg-gray-50">
-                              <p className="text-xs font-medium text-gray-500 px-2 mb-1">POPULAR TYPES</p>
+                              <p className="text-xs font-medium text-gray-500 px-2 mb-1">{language === 'ta' ? 'பிரபலமான வகைகள்' : 'POPULAR TYPES'}</p>
                               <div className="flex flex-wrap gap-1">
                                 {eventTypes.slice(0, 5).map(type => (
                                   <button
@@ -1787,13 +1882,13 @@ export default function FeedPage() {
                             {loadingEventTypes ? (
                               <div className="p-8 text-center">
                                 <Loader2 className="h-6 w-6 animate-spin mx-auto text-amber-600" />
-                                <p className="text-sm text-gray-500 mt-2">Loading types...</p>
+                                <p className="text-sm text-gray-500 mt-2">{language === 'ta' ? 'வகைகளை ஏற்றுகிறது...' : 'Loading types...'}</p>
                               </div>
                             ) : eventTypes.length === 0 ? (
                               <div className="p-8 text-center">
                                 <Tag className="h-8 w-8 text-gray-300 mx-auto mb-2" />
-                                <p className="text-sm text-gray-500">No event types yet</p>
-                                <p className="text-xs text-gray-400">Create your first type above</p>
+                                <p className="text-sm text-gray-500">{language === 'ta' ? 'நிகழ்வு வகைகள் எதுவும் இல்லை' : 'No event types yet'}</p>
+                                <p className="text-xs text-gray-400">{language === 'ta' ? 'உங்கள் முதல் வகையை மேலே உருவாக்கவும்' : 'Create your first type above'}</p>
                               </div>
                             ) : (
                               <div className="divide-y divide-gray-100">
@@ -1815,7 +1910,7 @@ export default function FeedPage() {
                                       </div>
                                       <div>
                                         <p className="font-medium text-gray-900">{type.title}</p>
-                                        <p className="text-xs text-gray-500">Used {type.usage_count} times</p>
+                                        <p className="text-xs text-gray-500">{language === 'ta' ? `${type.usage_count} முறை பயன்படுத்தப்பட்டது` : `Used ${type.usage_count} times`}</p>
                                       </div>
                                     </div>
                                     {eventType === type.id && (
@@ -1836,7 +1931,7 @@ export default function FeedPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       <span className="flex items-center">
                         <Camera className="h-4 w-4 mr-1 text-amber-500" />
-                        Cover Image
+                        {language === 'ta' ? 'அட்டைப் படம்' : 'Cover Image'}
                       </span>
                     </label>
                     {mediaPreviews[0] ? (
@@ -1857,7 +1952,7 @@ export default function FeedPage() {
                       <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-amber-500 hover:bg-amber-50 transition-all group">
                         <div className="flex flex-col items-center justify-center pt-5 pb-6">
                           <Camera className="h-8 w-8 text-gray-400 group-hover:text-amber-500 mb-2 transition-colors" />
-                          <p className="text-sm text-gray-500 group-hover:text-amber-600">Click to upload cover image</p>
+                          <p className="text-sm text-gray-500 group-hover:text-amber-600">{language === 'ta' ? 'அட்டைப் படத்தைப் பதிவேற்ற கிளிக் செய்யவும்' : 'Click to upload cover image'}</p>
                         </div>
                         <input
                           type="file"
@@ -1878,12 +1973,12 @@ export default function FeedPage() {
                       {posting ? (
                         <>
                           <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                          Creating Event...
+                          {language === 'ta' ? 'நிகழ்வை உருவாக்குகிறது...' : 'Creating Event...'}
                         </>
                       ) : (
                         <>
                           <Calendar className="h-4 w-4 mr-2" />
-                          Create Event
+                          {language === 'ta' ? 'நிகழ்வை உருவாக்கு' : 'Create Event'}
                         </>
                       )}
                     </button>
@@ -1894,86 +1989,77 @@ export default function FeedPage() {
 
             {/* Event Filter Tabs */}
             {activeTab === 'events' && (
-              <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-lg p-2 flex flex-wrap gap-2 border border-amber-100">
+              <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-lg p-2 grid grid-cols-2 xs:grid-cols-3 sm:flex sm:flex-wrap gap-2 border border-amber-100">
                 <button
                   onClick={() => setEventFilter('all')}
-                  className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${eventFilter === 'all'
+                  className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center ${eventFilter === 'all'
                     ? 'bg-linear-to-r from-amber-600 to-orange-600 text-white shadow-md'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
                   <List className="h-4 w-4 inline mr-1" />
-                  All Events
+                  {language === 'ta' ? 'அனைத்தும்' : 'All'}
                 </button>
                 <button
                   onClick={() => setEventFilter('upcoming')}
-                  className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${eventFilter === 'upcoming'
+                  className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center ${eventFilter === 'upcoming'
                     ? 'bg-linear-to-r from-amber-600 to-orange-600 text-white shadow-md'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
-                  📅 Upcoming
+                  📅 {language === 'ta' ? 'வரவிருக்கும்' : 'Upcoming'}
                 </button>
                 <button
                   onClick={() => setEventFilter('past')}
-                  className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${eventFilter === 'past'
+                  className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center ${eventFilter === 'past'
                     ? 'bg-linear-to-r from-amber-600 to-orange-600 text-white shadow-md'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
-                  ⏰ Past
+                  ⏰ {language === 'ta' ? 'கடந்தவை' : 'Past'}
                 </button>
                 <button
                   onClick={() => setEventFilter('myevents')}
-                  className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${eventFilter === 'myevents'
+                  className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center ${eventFilter === 'myevents'
                     ? 'bg-linear-to-r from-amber-600 to-orange-600 text-white shadow-md'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
-                  ✨ My Events
+                  ✨ {language === 'ta' ? 'எனது நிகழ்வுகள்' : 'My Events'}
                 </button>
                 <button
                   onClick={() => setEventFilter('myrsvps')}
-                  className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${eventFilter === 'myrsvps'
+                  className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center ${eventFilter === 'myrsvps'
                     ? 'bg-linear-to-r from-amber-600 to-orange-600 text-white shadow-md'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
-                  📋 My RSVPs
-                </button>
-                <button
-                  onClick={() => setEventFilter('myreplies')}
-                  className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${eventFilter === 'myreplies'
-                    ? 'bg-linear-to-r from-amber-600 to-orange-600 text-white shadow-md'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                >
-                  💬 My Replies
+                  📋 {language === 'ta' ? 'எனது RSVPs' : 'My RSVPs'}
                 </button>
               </div>
             )}
 
             {/* Post Filter Tabs */}
             {activeTab === 'posts' && (
-              <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-lg p-2 flex flex-wrap gap-2 border border-amber-100 mb-6">
+              <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-lg p-2 flex gap-2 border border-amber-100 mb-6">
                 <button
                   onClick={() => setPostFilter('all')}
-                  className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${postFilter === 'all'
+                  className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center justify-center ${postFilter === 'all'
                     ? 'bg-linear-to-r from-amber-600 to-orange-600 text-white shadow-md'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
-                  <List className="h-4 w-4 inline mr-1" />
-                  All Posts
+                  <List className="h-4 w-4 mr-2" />
+                  {language === 'ta' ? 'அனைத்து பதிவுகளும்' : 'All Posts'}
                 </button>
                 <button
                   onClick={() => setPostFilter('myposts')}
-                  className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${postFilter === 'myposts'
+                  className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center justify-center ${postFilter === 'myposts'
                     ? 'bg-linear-to-r from-amber-600 to-orange-600 text-white shadow-md'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
-                  My Posts
+                  ✨ {language === 'ta' ? 'எனது பதிவுகள்' : 'My Posts'}
                 </button>
               </div>
             )}
@@ -1986,9 +2072,9 @@ export default function FeedPage() {
                   <div className="w-20 h-20 bg-linear-to-br from-amber-100 to-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <MessageCircle className="h-10 w-10 text-amber-500" />
                   </div>
-                  <p className="text-gray-700 text-lg font-medium">No posts yet</p>
+                  <p className="text-gray-700 text-lg font-medium">{language === 'ta' ? 'இன்னும் பதிவுகள் இல்லை' : 'No posts yet'}</p>
                   <p className="text-gray-500 text-sm mt-2">
-                    {postFilter === 'myposts' ? "You haven't shared any posts yet." : "Be the first to share something!"}
+                    {postFilter === 'myposts' ? (language === 'ta' ? 'நீங்கள் இன்னும் எந்த பதிவையும் பகிரவில்லை.' : "You haven't shared any posts yet.") : (language === 'ta' ? 'எதையாவது பகிர முதலில் தொடங்குங்கள்!' : "Be the first to share something!")}
                   </p>
                 </div>
               ) : (
@@ -2014,19 +2100,19 @@ export default function FeedPage() {
               eventsLoading ? (
                 <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-amber-100">
                   <Loader2 className="h-12 w-12 text-amber-600 animate-spin mx-auto" />
-                  <p className="text-gray-600 mt-4 font-medium">Loading amazing events...</p>
+                  <p className="text-gray-600 mt-4 font-medium">{language === 'ta' ? 'அற்புதமான நிகழ்வுகளை ஏற்றுகிறது...' : 'Loading amazing events...'}</p>
                 </div>
               ) : events.length === 0 ? (
                 <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-amber-100">
                   <div className="w-20 h-20 bg-linear-to-br from-amber-100 to-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Calendar className="h-10 w-10 text-amber-500" />
                   </div>
-                  <p className="text-gray-700 text-lg font-medium">No events found</p>
-                  <p className="text-gray-500 text-sm mt-2">Create your first event and start the party! 🎉</p>
+                  <p className="text-gray-700 text-lg font-medium">{language === 'ta' ? 'நிகழ்வுகள் எதுவும் இல்லை' : 'No events found'}</p>
+                  <p className="text-gray-500 text-sm mt-2">{language === 'ta' ? 'உங்கள் முதல் நிகழ்வை உருவாக்கி மகிழுங்கள்! 🎉' : 'Create your first event and start the party! 🎉'}</p>
                 </div>
               ) : (
                 events.map((event) => (
-                  <div key={event.id} className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-amber-100 overflow-hidden hover:shadow-2xl transition-all">
+                  <div key={event.id} id={`event-${event.id}`} className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-amber-100 overflow-hidden hover:shadow-2xl transition-all">
                     {/* Event Header */}
                     <div className="p-6 pb-4">
                       <div className="flex items-center justify-between mb-4">
@@ -2035,7 +2121,11 @@ export default function FeedPage() {
                             <Calendar className="h-6 w-6 text-white" />
                           </div>
                           <div>
-                            <h3 className="font-semibold text-gray-900">{event.created_by_name}</h3>
+                            <h3 className="font-semibold text-gray-900">
+                              {eventFilter === 'myreplies' ?
+                                ((event as any).user_first_name || (event as any).user?.full_name || 'Anonymous') :
+                                event.created_by_name}
+                            </h3>
                             <div className="flex items-center space-x-2">
                               <p className="text-sm text-gray-500 flex items-center">
                                 {new Date(event.created_at).toLocaleString(language === 'ta' ? 'ta-IN' : 'en-US', {
@@ -2089,7 +2179,7 @@ export default function FeedPage() {
                                     className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-amber-50 hover:text-amber-700 transition-colors"
                                   >
                                     <Edit2 className="h-4 w-4" />
-                                    <span>Edit Event</span>
+                                    <span>{language === 'ta' ? 'நிகழ்வைத் திருத்து' : 'Edit Event'}</span>
                                   </button>
                                   <button
                                     onClick={() => {
@@ -2099,7 +2189,7 @@ export default function FeedPage() {
                                     className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
                                   >
                                     <Trash2 className="h-4 w-4" />
-                                    <span>Delete Event</span>
+                                    <span>{language === 'ta' ? 'நிகழ்வை நீக்கு' : 'Delete Event'}</span>
                                   </button>
                                 </div>
                               )}
@@ -2117,7 +2207,7 @@ export default function FeedPage() {
                             }`}
                         >
                           <Users className="h-3 w-3 mr-1" />
-                          <span>View Guests</span>
+                          <span>{language === 'ta' ? 'விருந்தினர்களைப் பார்' : 'View Guests'}</span>
                           <span className="ml-1.5 px-1.5 py-0.5 bg-white rounded-full text-[10px] font-bold text-amber-600">
                             {event.rsvp_going + event.rsvp_maybe + event.rsvp_not_going}
                           </span>
@@ -2127,34 +2217,40 @@ export default function FeedPage() {
 
                     <div className="p-6 pt-0">
                       <div className="mb-4">
-                        <h2 className="text-xl font-bold text-gray-900 mb-2">{event.title}</h2>
-                        <p className="text-gray-600 mb-4 leading-relaxed">{event.description}</p>
+                        <h2 className="text-xl font-bold text-gray-900 mb-2">
+                          {eventFilter === 'myreplies' ? 'Comment Reply' : event.title}
+                        </h2>
+                        <p className="text-gray-600 mb-4 leading-relaxed">
+                          {eventFilter === 'myreplies' ? (event as any).content : event.description}
+                        </p>
 
-                        <div className="space-y-2 text-sm bg-amber-50/50 p-3 rounded-xl">
-                          <div className="flex items-center text-gray-700">
-                            <Clock className="h-4 w-4 mr-2 text-amber-500" />
-                            <span className="font-medium">{eventHelpers.formatEventDate(event.start_date, event.end_date, event.is_all_day)}</span>
-                          </div>
-
-                          {event.location_name && (
+                        {eventFilter !== 'myreplies' && (
+                          <div className="space-y-2 text-sm bg-amber-50/50 p-3 rounded-xl">
                             <div className="flex items-center text-gray-700">
-                              <MapPin className="h-4 w-4 mr-2 text-amber-500" />
-                              <span className="font-medium">{event.location_name}{event.city ? `, ${event.city}` : ''}</span>
+                              <Clock className="h-4 w-4 mr-2 text-amber-500" />
+                              <span className="font-medium">{eventHelpers.formatEventDate(event.start_date, event.end_date, event.is_all_day)}</span>
                             </div>
-                          )}
 
-                          {event.event_type_title && (
-                            <div className="flex items-center">
-                              <Tag className="h-4 w-4 mr-2 text-purple-500" />
-                              <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
-                                {event.event_type_title}
-                              </span>
-                            </div>
-                          )}
-                        </div>
+                            {event.location_name && (
+                              <div className="flex items-center text-gray-700">
+                                <MapPin className="h-4 w-4 mr-2 text-amber-500" />
+                                <span className="font-medium">{event.location_name}{event.city ? `, ${event.city}` : ''}</span>
+                              </div>
+                            )}
+
+                            {event.event_type_title && (
+                              <div className="flex items-center">
+                                <Tag className="h-4 w-4 mr-2 text-purple-500" />
+                                <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                                  {event.event_type_title}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
-                      {event.cover_image_url && (
+                      {eventFilter !== 'myreplies' && event.cover_image_url && (
                         <div className="mb-4 rounded-xl overflow-hidden shadow-md">
                           <img
                             src={getFullImageUrl(event.cover_image_url)}
@@ -2169,18 +2265,22 @@ export default function FeedPage() {
 
                       <div className="flex items-center justify-between text-sm text-gray-600 mb-4 pb-4 border-b border-gray-100">
                         <div className="flex items-center space-x-3">
-                          <span className="flex items-center bg-green-50 px-3 py-1.5 rounded-full">
-                            <CheckCircle className="h-4 w-4 mr-1 text-green-500" />
-                            <span className="font-bold">{event.rsvp_going}</span>
-                          </span>
-                          <span className="flex items-center bg-yellow-50 px-3 py-1.5 rounded-full">
-                            <AlertCircle className="h-4 w-4 mr-1 text-yellow-500" />
-                            <span className="font-bold">{event.rsvp_maybe}</span>
-                          </span>
-                          <span className="flex items-center bg-red-50 px-3 py-1.5 rounded-full">
-                            <XCircle className="h-4 w-4 mr-1 text-red-500" />
-                            <span className="font-bold">{event.rsvp_not_going}</span>
-                          </span>
+                          {eventFilter !== 'myreplies' && (
+                            <>
+                              <span className="flex items-center bg-green-50 px-3 py-1.5 rounded-full">
+                                <CheckCircle className="h-4 w-4 mr-1 text-green-500" />
+                                <span className="font-bold">{event.rsvp_going}</span>
+                              </span>
+                              <span className="flex items-center bg-yellow-50 px-3 py-1.5 rounded-full">
+                                <AlertCircle className="h-4 w-4 mr-1 text-yellow-500" />
+                                <span className="font-bold">{event.rsvp_maybe}</span>
+                              </span>
+                              <span className="flex items-center bg-red-50 px-3 py-1.5 rounded-full">
+                                <XCircle className="h-4 w-4 mr-1 text-red-500" />
+                                <span className="font-bold">{event.rsvp_not_going}</span>
+                              </span>
+                            </>
+                          )}
                         </div>
 
                         <div className="flex items-center space-x-4">
@@ -2208,7 +2308,7 @@ export default function FeedPage() {
                         </div>
                       </div>
 
-                      {new Date(event.start_date) > new Date() && (
+                      {eventFilter !== 'myreplies' && new Date(event.start_date) > new Date() && (
                         <div className="flex items-center space-x-2 mb-4">
                           <button
                             onClick={() => handleRSVP(event.id, 'GOING')}
@@ -2220,7 +2320,7 @@ export default function FeedPage() {
                             ) : (
                               <>
                                 <CheckCircle className="h-4 w-4" />
-                                <span>Going</span>
+                                <span>{language === 'ta' ? 'வருகிறேன்' : 'Going'}</span>
                               </>
                             )}
                           </button>
@@ -2235,7 +2335,7 @@ export default function FeedPage() {
                             ) : (
                               <>
                                 <AlertCircle className="h-4 w-4" />
-                                <span>Maybe</span>
+                                <span>{language === 'ta' ? 'இருக்கலாம்' : 'Maybe'}</span>
                               </>
                             )}
                           </button>
@@ -2251,7 +2351,7 @@ export default function FeedPage() {
                               <>
                                 <XCircle className="h-4 w-4" />
                                 <span>
-                                  {event.user_rsvp?.response === 'NOT_GOING' ? 'Cancel' : 'Not Going'}
+                                  {event.user_rsvp?.response === 'NOT_GOING' ? (language === 'ta' ? 'ரத்துசெய்' : 'Cancel') : (language === 'ta' ? 'வரவில்லை' : 'Not Going')}
                                 </span>
                               </>
                             )}
@@ -2263,7 +2363,7 @@ export default function FeedPage() {
                         <div className="mt-4 border-t border-gray-100 pt-6 animate-scale-in">
                           <h4 className="font-bold text-gray-900 mb-4 flex items-center">
                             <MessageCircle className="h-5 w-5 mr-2 text-amber-500" />
-                            Comments ({event.comment_count || event.comments_count || 0})
+                            {language === 'ta' ? `கருத்துகள் (${event.comment_count || event.comments_count || 0})` : `Comments (${event.comment_count || event.comments_count || 0})`}
                           </h4>
 
                           <div className="flex items-start space-x-3 mb-6">
@@ -2276,7 +2376,7 @@ export default function FeedPage() {
                               <textarea
                                 value={commentInputs[event.id] || ''}
                                 onChange={(e) => setCommentInputs({ ...commentInputs, [event.id]: e.target.value })}
-                                placeholder="Write a comment..."
+                                placeholder={language === 'ta' ? 'கருத்தை எழுதவும்...' : 'Write a comment...'}
                                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all text-sm resize-none"
                                 rows={1}
                                 onInput={(e) => {
@@ -2302,7 +2402,7 @@ export default function FeedPage() {
                               </div>
                             ) : !eventComments[event.id] || eventComments[event.id].length === 0 ? (
                               <p className="text-center text-gray-400 text-sm py-4 italic">
-                                No comments yet. Be the first to comment!
+                                {language === 'ta' ? 'கருத்துகள் எதுவும் இல்லை. முதலில் கருத்தைப் பதியுங்கள்!' : 'No comments yet. Be the first to comment!'}
                               </p>
                             ) : (
                               eventComments[event.id].map(comment => (
@@ -2325,7 +2425,7 @@ export default function FeedPage() {
                         <div className="mt-4 p-4 bg-linear-to-br from-amber-50 to-orange-50 rounded-xl space-y-2 border border-amber-100 animate-scale-in">
                           <h4 className="font-semibold text-amber-800 mb-3 flex items-center">
                             <Sparkles className="h-4 w-4 mr-2" />
-                            Detailed Information
+                            {language === 'ta' ? 'விவரமான தகவல்' : 'Detailed Information'}
                           </h4>
 
                           {event.is_virtual && event.virtual_link && (
@@ -2333,7 +2433,7 @@ export default function FeedPage() {
                               <span className="font-medium text-gray-700 w-24">Link:</span>
                               <a href={event.virtual_link} target="_blank" rel="noopener noreferrer"
                                 className="text-amber-600 hover:underline flex-1 truncate font-bold">
-                                Join Virtual Meeting
+                                {language === 'ta' ? 'மெய்நிகர் சந்திப்பில் சேரவும்' : 'Join Virtual Meeting'}
                               </a>
                             </div>
                           )}
@@ -2359,12 +2459,12 @@ export default function FeedPage() {
           </div>
 
           {/* Right Sidebar */}
-          <div className="hidden lg:block lg:col-span-3 sticky top-28 self-start h-[calc(100vh-7.5rem)] overflow-y-auto no-scrollbar pb-10 space-y-6">
+          <div className="hidden lg:block lg:col-span-3 sticky top-8 self-start h-[calc(100vh-4rem)] overflow-hidden pb-10 space-y-6">
             <div className="bg-white/80 backdrop-blur-md rounded-2xl p-6 shadow-sm border border-amber-100">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-gray-900 flex items-center">
                   <Calendar className="h-5 w-5 mr-2 text-amber-600" />
-                  Upcoming Events
+                  {language === 'ta' ? 'வரவிருக்கும் நிகழ்வுகள்' : 'Upcoming Events'}
                 </h3>
                 <Sparkles className="h-4 w-4 text-amber-500" />
               </div>
@@ -2391,14 +2491,14 @@ export default function FeedPage() {
                 {events.length === 0 && (
                   <div className="text-center py-4 text-gray-400">
                     <Calendar className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                    <p className="text-xs italic">No upcoming events</p>
+                    <p className="text-xs italic">{language === 'ta' ? 'வரவிருக்கும் நிகழ்வுகள் எதுவும் இல்லை' : 'No upcoming events'}</p>
                   </div>
                 )}
                 <button
                   onClick={() => { setActiveTab('events'); setEventFilter('upcoming'); }}
                   className="w-full pt-2 text-sm text-amber-700 font-bold hover:text-orange-700 transition-colors flex items-center justify-center"
                 >
-                  See All Events
+                  {language === 'ta' ? 'அனைத்து நிகழ்வுகளையும் காண்க' : 'See All Events'}
                   <ChevronRight className="h-4 w-4 ml-1" />
                 </button>
               </div>
@@ -2408,16 +2508,16 @@ export default function FeedPage() {
               <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:bg-white/20 transition-all"></div>
               <h3 className="font-bold mb-2 relative z-10 flex items-center">
                 <Sparkles className="h-4 w-4 mr-2" />
-                Grow your tree
+                {language === 'ta' ? 'தொடர்புகளை வளர்க்கவும்' : 'Grow your tree'}
               </h3>
               <p className="text-sm text-white/80 mb-4 relative z-10">
-                Connect with relatives and discover your roots across generations.
+                {language === 'ta' ? 'உறவினர்களுடன் இணைந்து, தலைமுறைகளைத் தாண்டி உங்கள் உறவுகளை அறியவும்.' : 'Connect with relatives and discover your roots across generations.'}
               </p>
               <button
                 onClick={() => navigate('/genealogy')}
                 className="w-full py-2.5 bg-white text-amber-700 rounded-xl text-sm font-bold hover:bg-amber-50 hover:shadow-lg transition-all relative z-10 transform active:scale-95"
               >
-                Go to Genealogy
+                {language === 'ta' ? 'கொடி வழி வரைபடம் செல்லவும்' : 'Go to Genealogy'}
               </button>
             </div>
           </div>
@@ -2488,15 +2588,15 @@ function EventCommentItem({
       <div className="flex items-start space-x-2">
         <div className={`${isReply ? 'w-8 h-8' : 'w-10 h-10'} bg-linear-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center shadow-xs shrink-0`}>
           <span className="text-gray-600 font-bold text-xs">
-            {comment.user?.full_name?.charAt(0).toUpperCase() || 
-             comment.user_name?.charAt(0).toUpperCase() || 
-             <User className="h-4 w-4" />}
+            {comment.user?.full_name?.charAt(0).toUpperCase() ||
+              comment.user_name?.charAt(0).toUpperCase() ||
+              <User className="h-4 w-4" />}
           </span>
         </div>
         <div className="flex-1 max-w-full overflow-hidden">
           <div className="bg-white border border-gray-100 rounded-2xl px-4 py-2 shadow-xs group-hover:border-amber-100 transition-colors">
             <h5 className="font-bold text-gray-900 text-xs mb-0.5">
-              {comment.user?.full_name || comment.user_name || 'Anonymous'}
+              {comment.user?.full_name || comment.user_name || comment.user_first_name || (language === 'ta' ? 'பெயரற்றவர்' : 'Anonymous')}
             </h5>
             {isEditing ? (
               <div className="mt-2">
@@ -2508,10 +2608,10 @@ function EventCommentItem({
                 />
                 <div className="flex justify-end space-x-2 mt-2">
                   <button onClick={() => setIsEditing(false)} className="px-2 py-1 text-xs text-gray-500">
-                    Cancel
+                    {language === 'ta' ? 'ரத்துசெய்' : 'Cancel'}
                   </button>
                   <button onClick={handleEditSubmit} className="px-3 py-1 bg-amber-600 text-white rounded-lg text-xs font-bold">
-                    Save
+                    {language === 'ta' ? 'சேமி' : 'Save'}
                   </button>
                 </div>
               </div>
@@ -2523,15 +2623,15 @@ function EventCommentItem({
           <div className="flex items-center space-x-4 mt-1 ml-2 text-[10px] font-bold text-gray-400">
             <span>{new Date(comment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             <button onClick={() => setIsReplying(!isReplying)} className="hover:text-amber-600 transition-colors uppercase">
-              Reply
+              {language === 'ta' ? 'பதிலடி' : 'Reply'}
             </button>
             {isCommentAuthor && (
               <>
                 <button onClick={() => setIsEditing(true)} className="hover:text-blue-600 transition-colors uppercase">
-                  Edit
+                  {language === 'ta' ? 'திருத்து' : 'Edit'}
                 </button>
                 <button onClick={() => onDelete(eventId, comment.id)} className="hover:text-red-600 transition-colors uppercase">
-                  Delete
+                  {language === 'ta' ? 'நீக்கு' : 'Delete'}
                 </button>
               </>
             )}
@@ -2546,7 +2646,7 @@ function EventCommentItem({
                 <textarea
                   value={replyContent}
                   onChange={(e) => setReplyContent(e.target.value)}
-                  placeholder="Write a reply..."
+                  placeholder={language === 'ta' ? 'பதிலை எழுதவும்...' : 'Write a reply...'}
                   className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-1 focus:ring-amber-500 focus:bg-white transition-all text-xs resize-none"
                   rows={1}
                 />

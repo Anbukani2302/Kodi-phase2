@@ -36,7 +36,7 @@ interface Suggestion {
   value: string;
   label: string;
   count: number;
-  religions?: number;
+  lifestyles?: number;
 }
 
 export default function ProfilePage({ onNavigate }: ProfilePageProps) {
@@ -58,20 +58,20 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
   const [cultureSuggestions, setCultureSuggestions] = useState<Suggestion[]>(
     []
   );
-  const [religionSuggestions, setreligionSuggestions] = useState<Suggestion[]>(
-    []
-  );
+  const [lifestyleSuggestions, setlifestyleSuggestions] = useState<
+    Suggestion[]
+  >([]);
   const [activeSuggestionField, setActiveSuggestionField] = useState<
     string | null
   >(null);
 
   const [openInfo, setOpenInfo] = useState<{
     family: boolean;
-    religion: boolean;
+    lifestyle: boolean;
     culture: boolean;
   }>({
     family: false,
-    religion: false,
+    lifestyle: false,
     culture: false,
   });
 
@@ -88,7 +88,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
   const familyInfoText =
     "கொடிவழி வரைபடத்தில் தங்களுக்கான உறவுமுறை பெயர்களையும், கலாச்சார பெட்டகத்தில் தங்களது உறவுமுறைகளின் கடமைகள், உரிமைகள் பற்றிய விவரங்களையும் துல்லியமாக பெறலாம்.";
 
-  const religionInfoText =
+  const lifestyleInfoText =
     "கொடிவழி வரைபடத்தில் தங்களுக்கான உறவுமுறை பெயர்களையும், கலாச்சார பெட்டகத்தில் தங்களது உறவுமுறைகளின் கடமைகள், உரிமைகள் பற்றிய விவரங்களையும் துல்லியமாக பெறலாம்.";
 
   const cultureInfoText =
@@ -113,13 +113,32 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const calculateAge = (dob: string): number | undefined => {
+    if (!dob) return undefined;
+    const birthDate = new Date(dob);
+    if (isNaN(birthDate.getTime())) return undefined;
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age >= 0 ? age : 0;
+  };
+
   const loadProfile = async () => {
     try {
       setInitialLoading(true);
       setError("");
       const response = await authService.getMyProfile();
+      const profileData = { ...response };
+      if (profileData.dateofbirth && !profileData.age) {
+        const calculatedAge = profileData.dateofbirth ? calculateAge(profileData.dateofbirth) : undefined;
+        profileData.age = calculatedAge !== undefined ? calculatedAge : undefined;
+      }
       setProfile({
-        ...response,
+        ...profileData,
+        cultureoflife: response.familyname8 || response.cultureoflife,
         preferred_language: response?.preferred_language || language || "en",
       });
     } catch (err: unknown) {
@@ -242,12 +261,12 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
     async (
       field: string,
       query: string,
-      type: "family" | "culture" | "religion"
+      type: "family" | "culture" | "lifestyle"
     ) => {
       if (!query || query.length < 2) {
         if (type === "family") setFamilySuggestions([]);
         else if (type === "culture") setCultureSuggestions([]);
-        else if (type === "religion") setreligionSuggestions([]);
+        else if (type === "lifestyle") setlifestyleSuggestions([]);
         return;
       }
 
@@ -258,11 +277,11 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
             query
           )}`;
         } else if (type === "culture") {
-          endpoint = `api/admin/auto-suggest/user/user_castes/?q=${encodeURIComponent(
+          endpoint = `api/admin/auto-suggest/user/user_familyname8s/?q=${encodeURIComponent(
             query
           )}`;
-        } else if (type === "religion") {
-          endpoint = `api/admin/auto-suggest/user/user_religions/?q=${encodeURIComponent(
+        } else if (type === "lifestyle") {
+          endpoint = `api/admin/auto-suggest/user/user_lifestyles/?q=${encodeURIComponent(
             query
           )}`;
         }
@@ -273,14 +292,14 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
           setFamilySuggestions(response.data.suggestions || []);
         } else if (type === "culture") {
           setCultureSuggestions(response.data.suggestions || []);
-        } else if (type === "religion") {
-          setreligionSuggestions(response.data.suggestions || []);
+        } else if (type === "lifestyle") {
+          setlifestyleSuggestions(response.data.suggestions || []);
         }
       } catch (error) {
         console.error("Failed to fetch suggestions:", error);
         if (type === "family") setFamilySuggestions([]);
         else if (type === "culture") setCultureSuggestions([]);
-        else if (type === "religion") setreligionSuggestions([]);
+        else if (type === "lifestyle") setlifestyleSuggestions([]);
       }
     },
     300
@@ -336,6 +355,13 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
       return;
     }
 
+    // Handle Date of Birth and automatic age calculation
+    if (field === "dateofbirth" && typeof value === "string") {
+      const calculatedAge = calculateAge(value);
+      setProfile((prev) => ({ ...prev, [field]: value, age: typeof calculatedAge === 'number' ? calculatedAge : undefined }));
+      return;
+    }
+
     setProfile((prev) => ({ ...prev, [field]: value }));
 
     if (typeof value === "string") {
@@ -347,9 +373,9 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
         fetchSuggestions("cultureoflife", value, "culture");
         setActiveSuggestionField("cultureoflife");
       }
-      if (field === "religion") {
-        fetchSuggestions("religion", value, "religion");
-        setActiveSuggestionField("religion");
+      if (field === "lifestyle") {
+        fetchSuggestions("lifestyle", value, "lifestyle");
+        setActiveSuggestionField("lifestyle");
       }
     }
   };
@@ -358,7 +384,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
     setProfile((prev) => ({ ...prev, [field]: suggestion.value }));
     if (field === "familyname1") setFamilySuggestions([]);
     else if (field === "cultureoflife") setCultureSuggestions([]);
-    else if (field === "religion") setreligionSuggestions([]);
+    else if (field === "lifestyle") setlifestyleSuggestions([]);
     setActiveSuggestionField(null);
   };
 
@@ -452,8 +478,10 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
         return;
       }
 
-      const profileData: Partial<UserProfile> = {
-        ...profile,
+      const { cultureoflife, ...rest } = profile;
+      const profileData: Partial<UserProfile> & { familyname8?: string } = {
+        ...rest,
+        familyname8: cultureoflife,
         dateofbirth: profile.dateofbirth || undefined,
         age: profile.age ? parseInt(String(profile.age)) : undefined,
         preferred_language: profile.preferred_language,
@@ -501,7 +529,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
     navigate("/genealogy");
   };
 
-  const toggleInfo = (type: "family" | "religion" | "culture") => {
+  const toggleInfo = (type: "family" | "lifestyle" | "culture") => {
     setOpenInfo((prev) => ({
       ...prev,
       [type]: !prev[type],
@@ -572,7 +600,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
               {/* Inner content with your logo */}
               <div className="absolute inset-4 bg-linear-to-br from-amber-500 to-orange-600 rounded-full flex items-center justify-center shadow-2xl overflow-hidden">
                 <img
-                  src="/src/images/logo.png"
+                  src="/images/logo.png"
                   alt="Kodi Logo"
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -910,11 +938,10 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                       onChange={(e) =>
                         handleInputChange("firstname", e.target.value)
                       }
-                      className={`w-full px-4 py-3 bg-amber-50/50 border-2 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all duration-200 ${
-                        formErrors.firstname
-                          ? "border-red-300 bg-red-50/50 focus:ring-red-500"
-                          : "border-amber-200 hover:border-amber-300"
-                      }`}
+                      className={`w-full px-4 py-3 bg-amber-50/50 border-2 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all duration-200 ${formErrors.firstname
+                        ? "border-red-300 bg-red-50/50 focus:ring-red-500"
+                        : "border-amber-200 hover:border-amber-300"
+                        }`}
                       placeholder={
                         language === "ta"
                           ? "உங்கள் முதல் பெயர்"
@@ -983,11 +1010,10 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                       onChange={(e) =>
                         handleInputChange("gender", e.target.value)
                       }
-                      className={`w-full px-4 py-3 bg-amber-50/50 border-2 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none appearance-none cursor-pointer transition-all duration-200 ${
-                        formErrors.gender
-                          ? "border-red-300 bg-red-50/50 focus:ring-red-500"
-                          : "border-amber-200 hover:border-amber-300"
-                      }`}
+                      className={`w-full px-4 py-3 bg-amber-50/50 border-2 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none appearance-none cursor-pointer transition-all duration-200 ${formErrors.gender
+                        ? "border-red-300 bg-red-50/50 focus:ring-red-500"
+                        : "border-amber-200 hover:border-amber-300"
+                        }`}
                     >
                       <option value="" disabled className="bg-white">
                         {language === "ta" ? "தேர்ந்தெடுக்கவும்" : "Select"}
@@ -1044,11 +1070,10 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                       onChange={(e) =>
                         handleInputChange("dateofbirth", e.target.value)
                       }
-                      className={`w-full pl-10 pr-4 py-3 bg-orange-50/50 border-2 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all duration-200 ${
-                        formErrors.dateofbirth
-                          ? "border-red-300 bg-red-50/50 focus:ring-red-500"
-                          : "border-orange-200 hover:border-orange-300"
-                      }`}
+                      className={`w-full pl-10 pr-4 py-3 bg-orange-50/50 border-2 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all duration-200 ${formErrors.dateofbirth
+                        ? "border-red-300 bg-red-50/50 focus:ring-red-500"
+                        : "border-orange-200 hover:border-orange-300"
+                        }`}
                     />
                     {formErrors.dateofbirth && (
                       <p className="absolute -bottom-5 left-0 text-xs text-red-600 flex items-center gap-1">
@@ -1066,7 +1091,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                   </label>
                   <input
                     type="number"
-                    value={profile.age || ""}
+                    value={profile.age ?? ""}
                     onChange={(e) => handleInputChange("age", e.target.value)}
                     className="w-full px-4 py-3 bg-orange-50/50 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all duration-200 hover:border-orange-300"
                     min="0"
@@ -1195,11 +1220,10 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                       onChange={(e) =>
                         handleInputChange("contact_number", e.target.value)
                       }
-                      className={`w-full pl-10 pr-4 py-3 bg-orange-50/50 border-2 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all duration-200 ${
-                        mobileError
-                          ? "border-red-300 bg-red-50/50 focus:ring-red-500"
-                          : "border-orange-200 hover:border-orange-300"
-                      }`}
+                      className={`w-full pl-10 pr-4 py-3 bg-orange-50/50 border-2 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all duration-200 ${mobileError
+                        ? "border-red-300 bg-red-50/50 focus:ring-red-500"
+                        : "border-orange-200 hover:border-orange-300"
+                        }`}
                       placeholder={
                         language === "ta" ? "10 இலக்க எண்" : "10 digit number"
                       }
@@ -1252,15 +1276,15 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                 </h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* religion - religion */}
+                {/* lifestyle - lifestyle */}
                 <div className="relative group">
                   <div className="flex items-center gap-2 mb-1">
                     <label className="text-sm font-medium text-yellow-700 group-hover:text-yellow-900 transition-colors">
-                      {language === "ta" ? "வாழ்வியல் கலாச்சாரம்" : "religion"}
+                      {language === "ta" ? "வாழ்வியல் கலாச்சாரம்" : "lifestyle"}
                     </label>
                     <button
                       type="button"
-                      onClick={() => toggleInfo("religion")}
+                      onClick={() => toggleInfo("lifestyle")}
                       className="p-1 rounded-full bg-amber-100 text-amber-600 hover:bg-amber-200 hover:text-amber-700 transition-colors"
                     >
                       <Info size={12} />
@@ -1269,33 +1293,33 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                   <div className="relative">
                     <input
                       type="text"
-                      value={profile.religion || ""}
+                      value={profile.lifestyle || ""}
                       onChange={(e) =>
-                        handleInputChange("religion", e.target.value)
+                        handleInputChange("lifestyle", e.target.value)
                       }
-                      onFocus={() => setActiveSuggestionField("religion")}
+                      onFocus={() => setActiveSuggestionField("lifestyle")}
                       className="w-full px-4 py-3 bg-yellow-50/50 border-2 border-yellow-200 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all duration-200 hover:border-yellow-300"
                       placeholder={
                         language === "ta" ? "தேடுங்கள்..." : "Search..."
                       }
                     />
-                    {activeSuggestionField === "religion" && (
+                    {activeSuggestionField === "lifestyle" && (
                       <SuggestionDropdown
-                        suggestions={religionSuggestions}
-                        field="religion"
+                        suggestions={lifestyleSuggestions}
+                        field="lifestyle"
                         onSelect={(suggestion) =>
-                          handleSuggestionClick("religion", suggestion)
+                          handleSuggestionClick("lifestyle", suggestion)
                         }
                       />
                     )}
                   </div>
-                  {openInfo.religion && (
+                  {openInfo.lifestyle && (
                     <div className="absolute z-30 mt-2 left-0 w-64 bg-white border border-amber-200 rounded-xl shadow-xl p-4 animate-fadeIn">
                       <p className="text-sm text-gray-700">
-                        {religionInfoText}
+                        {lifestyleInfoText}
                       </p>
                       <button
-                        onClick={() => toggleInfo("religion")}
+                        onClick={() => toggleInfo("lifestyle")}
                         className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
                       >
                         <X size={14} />
@@ -1304,7 +1328,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                   )}
                 </div>
 
-                {/* Culture of Life - Caste */}
+                {/* Culture of Life - familyname8 */}
                 <div className="relative group">
                   <div className="flex items-center gap-2 mb-1">
                     <label className="text-sm font-medium text-yellow-700 group-hover:text-yellow-900 transition-colors">
@@ -1418,11 +1442,10 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                       onClick={() =>
                         setShowMotherTongueDropdown(!showMotherTongueDropdown)
                       }
-                      className={`w-full px-4 py-3 bg-yellow-50/50 border-2 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all duration-200 text-left flex items-center justify-between ${
-                        formErrors.preferred_language
-                          ? "border-red-300 bg-red-50/50 focus:ring-red-500"
-                          : "border-yellow-200 hover:border-yellow-300"
-                      }`}
+                      className={`w-full px-4 py-3 bg-yellow-50/50 border-2 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all duration-200 text-left flex items-center justify-between ${formErrors.preferred_language
+                        ? "border-red-300 bg-red-50/50 focus:ring-red-500"
+                        : "border-yellow-200 hover:border-yellow-300"
+                        }`}
                     >
                       <span className="flex items-center gap-2">
                         {profile.preferred_language === "ta" ? (
@@ -1448,9 +1471,8 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                         )}
                       </span>
                       <ChevronDown
-                        className={`w-5 h-5 text-yellow-600 transition-transform duration-200 ${
-                          showMotherTongueDropdown ? "rotate-180" : ""
-                        }`}
+                        className={`w-5 h-5 text-yellow-600 transition-transform duration-200 ${showMotherTongueDropdown ? "rotate-180" : ""
+                          }`}
                       />
                     </button>
 

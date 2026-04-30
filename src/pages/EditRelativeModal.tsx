@@ -123,7 +123,7 @@ export default function EditRelativeModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-6">
+        <div className="bg-linear-to-r from-blue-500 to-blue-600 p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="bg-white/20 p-2 rounded-lg">
@@ -219,7 +219,7 @@ export default function EditRelativeModal({
             <button
               type="submit"
               disabled={loading || !newName.trim() || newName.trim() === relativeName || !relativeId}
-              className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+              className="px-5 py-2.5 bg-linear-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
             >
               {loading ? (
                 <>

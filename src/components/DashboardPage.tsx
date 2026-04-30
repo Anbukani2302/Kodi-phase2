@@ -132,7 +132,6 @@ export default function DashboardPage() {
                                         <th className="px-6 py-4">{t('mobile')}</th>
                                         <th className="px-6 py-4">{t('status')}</th>
                                         <th className="px-6 py-4">{t('joinDate')}</th>
-                                        <th className="px-6 py-4 text-center">{t('action')}</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-amber-50">
@@ -157,11 +156,6 @@ export default function DashboardPage() {
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 text-sm text-amber-700">{user.joinDate}</td>
-                                            <td className="px-6 py-4 text-center">
-                                                <button className="p-2 text-amber-400 hover:bg-amber-50 rounded-lg group-hover:text-amber-700">
-                                                    <MoreVertical size={16} />
-                                                </button>
-                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
