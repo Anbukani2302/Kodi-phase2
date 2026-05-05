@@ -1633,30 +1633,13 @@ export default function FeedPage() {
                           >
                             <X className="h-3 w-3" />
                           </button>
-                          <input
-                            type="text"
-                            value={mediaCaptions[index]}
-                            onChange={(e) => updateMediaCaption(index, e.target.value)}
-                            placeholder="Add caption..."
-                            className="absolute bottom-2 left-2 right-2 px-2 py-1 text-xs bg-black/50 text-white rounded-lg focus:outline-none"
-                          />
+                         
                         </div>
                       ))}
                     </div>
                   )}
 
-                  {/* Visibility Selector */}
-                  <div className="mt-4 flex items-center space-x-2">
-                    <label className="text-sm text-gray-600">{language === 'ta' ? 'பார்வை:' : 'Visibility:'}</label>
-                    <select
-                      value={postVisibility}
-                      onChange={(e) => setPostVisibility(e.target.value)}
-                      className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
-                    >
-                      <option value="public">{language === 'ta' ? '🌍 பொது' : '🌍 Public'}</option>
-                      <option value="connections">{language === 'ta' ? '👥 தொடர்புகள்' : '👥 Connections'}</option>
-                    </select>
-                  </div>
+                  
 
                   {/* Media Upload */}
                   <div className="mt-4 border-t border-gray-100 pt-4">
