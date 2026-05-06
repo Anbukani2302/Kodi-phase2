@@ -417,7 +417,7 @@ export const chatService = {
   // Check block status with a user
   checkBlockStatus: async (userId: number): Promise<BlockStatus> => {
     try {
-      const response = await api.get(`/api/accounts/block-status/${userId}/`);
+      const response = await api.get(`/api/chat/block-status/${userId}/`);
       return response.data;
     } catch (error) {
       console.error('Error checking block status:', error);

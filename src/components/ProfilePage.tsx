@@ -511,10 +511,33 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
         setSuccess("");
         navigate("/genealogy");
       }, 1500);
-    } catch (err: unknown) {
-      const error = err as Error;
-      setError(error.message || t("error"));
+    } catch (err: any) {
       console.error("Save failed:", err);
+      
+      // Handle field-specific errors from API
+      if (err.response?.data) {
+        const apiErrors = err.response.data;
+        if (apiErrors.dateofbirth) {
+          const dobError = Array.isArray(apiErrors.dateofbirth) 
+            ? apiErrors.dateofbirth[0] 
+            : apiErrors.dateofbirth;
+          
+          setFormErrors(prev => ({
+            ...prev,
+            dateofbirth: dobError
+          }));
+          
+          setError(dobError);
+          
+          dateofbirthRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+          return;
+        }
+      }
+
+      setError(err.message || t("error"));
     } finally {
       setSaving(false);
     }

@@ -105,7 +105,7 @@ export const chatAPI = {
 
   // Check block status with a specific user
   checkBlockStatus: async (userId: number): Promise<BlockStatus> => {
-    const response = await api.get(`/api/accounts/block-status/${userId}/`);
+    const response = await api.get(`/api/chat/block-status/${userId}/`);
     return response.data;
   }
 };

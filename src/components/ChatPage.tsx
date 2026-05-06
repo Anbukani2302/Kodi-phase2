@@ -130,16 +130,6 @@ export default function ChatPage() {
       loadMessages(selectedConversation.id);
       setShowChatOptions(false);
 
-      // Call markAllAsRead immediately when opening
-      chatService.markAllAsRead(selectedConversation.id)
-        .then(() => {
-          // Update local unread count to 0 immediately
-          setConversations(prev => prev.map(conv =>
-            conv.id === selectedConversation.id ? { ...conv, unread_count: 0 } : conv
-          ));
-        })
-        .catch(console.error);
-
       if (selectedConversation.room_type === 'direct') {
         // Reset states immediately before fetching new ones to avoid UI persistence from previous chat
         setIsBlockedByMe(false);
@@ -181,8 +171,15 @@ export default function ChatPage() {
         setAmIBlocked(false);
       }
 
-      // Mark as read when opening conversation
-      chatService.markAllAsRead(selectedConversation.id).catch(console.error);
+      // Mark as read when opening conversation - This is the API call that triggers blue ticks
+      chatService.markAllAsRead(selectedConversation.id)
+        .then(() => {
+          // Update local unread count to 0 immediately
+          setConversations(prev => prev.map(conv =>
+            conv.id === selectedConversation.id ? { ...conv, unread_count: 0 } : conv
+          ));
+        })
+        .catch(console.error);
     }
   }, [selectedConversation, user?.id]);
 
@@ -556,6 +553,13 @@ export default function ChatPage() {
     if (!selectedConversation) return;
     try {
       await chatService.deleteConversation(selectedConversation.id);
+      
+      // Immediately call messages API to refresh/clear
+      await loadMessages(selectedConversation.id);
+      
+      // Call contacts API as requested
+      await loadConversations();
+      
       setConversations(prev => prev.filter(c => c.id !== selectedConversation.id));
       setSelectedConversation(null);
       setShowChatOptions(false);
@@ -599,10 +603,11 @@ export default function ChatPage() {
           files: files.length > 0 ? files : null
         });
 
-        // Add message with delivered status
+        // Add message with delivered status if online
+        const isOnline = window.navigator.onLine;
         const messageWithStatus = {
           ...sentMessage,
-          delivered_at: new Date().toISOString()
+          delivered_at: isOnline ? new Date().toISOString() : null
         };
 
         setMessages((prev) => {
@@ -615,8 +620,9 @@ export default function ChatPage() {
         // Refresh conversation list to update last message
         loadConversations();
 
-        // Immediately refresh messages from server after sending
-        await loadMessages(selectedConversation.id);
+        // Immediately refresh messages from server after sending without marking as read
+        const freshMessages = await chatService.getMessages(selectedConversation.id);
+        setMessages(freshMessages);
       } catch (restError) {
         console.error('Both WS & REST failed');
         setError('Failed to send message');
@@ -1155,8 +1161,8 @@ export default function ChatPage() {
                     className={`flex ${isOwn ? 'justify-end' : 'justify-start'} ${!isLastInGroup ? 'mb-1' : 'mb-4'}`}
                   >
                     <div className={`max-w-xs md:max-w-md ${isOwn ? 'order-2' : 'order-1'}`}>
-                      {/* Group chat sender name */}
-                      {!isOwn && selectedConversation?.room_type === 'group' && isLastInGroup && (
+                      {/* Sender mobile number display */}
+                      {!isOwn && (
                         <p className="text-xs text-gray-600 mb-1 ml-2 font-semibold">{message.sender_mobile}</p>
                       )}
 
@@ -1378,8 +1384,11 @@ export default function ChatPage() {
                     type="text"
                     value={messageInput}
                     onChange={(e) => {
-                      setMessageInput(e.target.value);
-                      handleTyping();
+                      const value = e.target.value;
+                      if (value.length <= 10 || isNaN(Number(value))) {
+                        setMessageInput(value);
+                        handleTyping();
+                      }
                     }}
                     placeholder={t('typeMessage')}
                     className="flex-1 px-4 py-3 border border-gray-300 rounded-full focus:ring-2 focus:ring-orange-500 focus:border-transparent min-w-0"
@@ -1614,8 +1623,10 @@ export default function ChatPage() {
                       value={newChatUserId}
                       onChange={(e) => {
                         const val = e.target.value;
-                        setNewChatUserId(val);
-                        handleSearchSuggestions(val);
+                        if (val.length <= 10 || isNaN(Number(val))) {
+                          setNewChatUserId(val);
+                          handleSearchSuggestions(val);
+                        }
                       }}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent mb-4"
                       autoFocus
