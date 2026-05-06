@@ -518,9 +518,16 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
       if (err.response?.data) {
         const apiErrors = err.response.data;
         if (apiErrors.dateofbirth) {
-          const dobError = Array.isArray(apiErrors.dateofbirth) 
+          const rawDobError = Array.isArray(apiErrors.dateofbirth) 
             ? apiErrors.dateofbirth[0] 
             : apiErrors.dateofbirth;
+          
+          let dobError = rawDobError;
+          if (rawDobError === "Invalid date of birth value") {
+            dobError = language === "ta" 
+              ? "செல்லுபடியாகாத பிறந்த தேதி" 
+              : "Invalid date of birth value";
+          }
           
           setFormErrors(prev => ({
             ...prev,
@@ -828,33 +835,36 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
         {/* Enhanced Privacy Notice - Neater Redesign */}
         <div className="mb-8 transform hover:scale-[1.01] transition-all duration-300">
           <div className="bg-white/80 backdrop-blur-md border border-amber-100 rounded-2xl shadow-sm p-5 relative overflow-hidden group">
-            <div className="flex items-center gap-4 relative z-10">
-              <div className="shrink-0">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 relative z-10">
+              <div className="shrink-0 hidden sm:block">
                 <div className="w-10 h-10 bg-amber-50 rounded-full flex items-center justify-center border border-amber-100 group-hover:bg-amber-100 transition-colors">
                   <Shield className="h-5 w-5 text-amber-600" />
                 </div>
               </div>
               <div className="flex-1">
-                <h3 className="text-base font-bold text-amber-900 flex items-center gap-2">
-                  {language === "ta"
-                    ? "தனியுரிமை பாதுகாப்பு"
-                    : "Privacy Protection"}
-                </h3>
-                <p className="text-sm text-gray-600 leading-relaxed mt-1">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-amber-600 sm:hidden" />
+                  <h3 className="text-sm sm:text-base font-bold text-amber-900">
+                    {language === "ta"
+                      ? "தனியுரிமை பாதுகாப்பு"
+                      : "Privacy Protection"}
+                  </h3>
+                </div>
+                <p className="text-xs sm:text-sm text-gray-600 leading-relaxed mt-1">
                   {language === "ta"
                     ? "🔒 உங்கள் விவரங்கள் குடும்ப உறுப்பினர்களுக்கு மட்டுமே காண்பிக்கப்படும்."
                     : "🔒 Your details are visible only to connected family members."}
                 </p>
               </div>
-              <div className="shrink-0 flex flex-col items-end gap-1">
-                <div className="flex items-center gap-1.5 px-3 py-1 bg-green-50 rounded-full border border-green-100">
-                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-                  <span className="text-[10px] font-bold text-green-700 uppercase tracking-wider">
+              <div className="shrink-0 flex flex-row sm:flex-col items-center sm:items-end gap-2 sm:gap-1 mt-2 sm:mt-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-amber-100/50">
+                <div className="flex items-center gap-1.5 px-2 sm:px-3 py-0.5 sm:py-1 bg-green-50 rounded-full border border-green-100">
+                  <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                  <span className="text-[9px] sm:text-[10px] font-bold text-green-700 uppercase tracking-wider whitespace-nowrap">
                     {language === "ta" ? "பாதுகாக்கப்பட்டது" : "Secured"}
                   </span>
                 </div>
-                <div className="flex items-center gap-1 text-[10px] text-amber-600 font-medium">
-                  <Lock className="h-3 w-3" />
+                <div className="flex items-center gap-1 text-[9px] sm:text-[10px] text-amber-600 font-medium whitespace-nowrap">
+                  <Lock className="h-2.5 w-2.5 sm:h-3 w-3" />
                   <span>
                     {language === "ta"
                       ? "இருமுனை பாதுகாப்பு"
@@ -1084,7 +1094,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                     {language === "ta" ? "பிறந்த தேதி" : "Date of Birth"}{" "}
                     <span className="text-red-500">*</span>
                   </label>
-                  <div className="relative">
+                  <div className={`relative ${formErrors.dateofbirth ? "mb-6" : ""}`}>
                     <Calendar className="absolute left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 text-orange-400" />
                     <input
                       ref={dateofbirthRef}

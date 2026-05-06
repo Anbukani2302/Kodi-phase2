@@ -873,15 +873,15 @@ export default function ConnectionsPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex-1 min-w-[120px] py-4 px-6 font-semibold transition-all duration-300 relative ${activeTab === tab.id
+                className={`flex-1 min-w-[120px] py-3 md:py-4 px-4 md:px-6 font-semibold transition-all duration-300 relative text-sm md:text-base ${activeTab === tab.id
                   ? 'text-orange-600 bg-linear-to-b from-orange-50 to-transparent'
                   : 'text-gray-600 hover:bg-gray-50'
                   }`}
               >
-                <tab.icon className="h-5 w-5 inline-block mr-2" />
-                {tab.label}
+                <tab.icon className="h-4 w-4 md:h-5 md:w-5 inline-block mr-1 md:mr-2" />
+                <span className="whitespace-nowrap">{tab.label}</span>
                 {tab.count > 0 && (
-                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${activeTab === tab.id
+                  <span className={`ml-1 md:ml-2 px-1.5 md:px-2 py-0.5 rounded-full text-[10px] md:text-xs ${activeTab === tab.id
                     ? 'bg-orange-100 text-orange-600'
                     : 'bg-gray-200 text-gray-600'
                     }`}>
@@ -895,7 +895,7 @@ export default function ConnectionsPage() {
             ))}
           </div>
 
-          <div className="p-6">
+          <div className="p-4 md:p-6">
             {/* Filter Chips for My Invitations */}
             {activeTab === 'myInvitations' && sentRequests.length > 0 && (
               <div className="mb-6">
@@ -934,26 +934,26 @@ export default function ConnectionsPage() {
               <div>
                 {/* Center Person */}
                 {centerPerson && (
-                  <div className="mb-6 p-6 bg-linear-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200">
-                    <div className="flex items-center gap-6">
-                      <div className="w-20 h-20 rounded-full bg-linear-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white font-bold text-3xl shadow-xl">
+                  <div className="mb-6 p-4 md:p-6 bg-linear-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200">
+                    <div className="flex flex-col sm:flex-row items-center sm:items-center gap-4 md:gap-6">
+                      <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-linear-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white font-bold text-2xl md:text-3xl shadow-xl">
                         {connectionService.getAvatarInitial(centerPerson.full_name)}
                       </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3">
-                          <h2 className="text-2xl font-bold text-gray-900">{centerPerson.full_name}</h2>
+                      <div className="flex-1 text-center sm:text-left">
+                        <div className="flex flex-col sm:flex-row items-center gap-2 md:gap-3">
+                          <h2 className="text-xl md:text-2xl font-bold text-gray-900">{centerPerson.full_name}</h2>
                           {centerPerson.is_current_user && (
-                            <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-semibold border border-green-200">
+                            <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold border border-green-200">
                               {language === 'ta' ? 'நீங்கள்' : 'You'}
                             </span>
                           )}
                         </div>
-                        <div className="flex gap-3 mt-2">
-                          <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-medium">
+                        <div className="flex flex-wrap justify-center sm:justify-start gap-2 md:gap-3 mt-2">
+                          <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs md:text-sm font-medium">
                             {centerPerson.gender === 'M' ? '👨 ' + (language === 'ta' ? 'ஆண்' : 'Male') : '👩 ' + (language === 'ta' ? 'பெண்' : 'Female')}
                           </span>
                           {centerPerson.mobile_number && (
-                            <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium flex items-center gap-1">
+                            <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs md:text-sm font-medium flex items-center gap-1">
                               <Phone className="h-3 w-3" />
                               {formatMobileNumber(centerPerson.mobile_number)}
                             </span>
@@ -962,7 +962,7 @@ export default function ConnectionsPage() {
                       </div>
                       <button
                         onClick={() => handleViewPersonDetails(centerPerson)}
-                        className="px-4 py-2 bg-white text-orange-600 rounded-lg hover:bg-orange-50 transition-colors border border-orange-200 font-medium flex items-center gap-2"
+                        className="w-full sm:w-auto px-4 py-2 bg-white text-orange-600 rounded-lg hover:bg-orange-50 transition-colors border border-orange-200 font-medium flex items-center justify-center gap-2"
                       >
                         <Info className="h-4 w-4" />
                         {language === 'ta' ? 'விவரங்கள்' : 'Details'}
@@ -981,11 +981,11 @@ export default function ConnectionsPage() {
                   {connections.map((item) => (
                     <div
                       key={item.person.id}
-                      className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:shadow-lg transition-all group"
+                      className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:shadow-lg transition-all group gap-4"
                     >
                       <div className="flex items-center gap-4">
-                        <div className="relative">
-                          <div className={`w-14 h-14 rounded-full bg-linear-to-br ${item.person.gender === 'M' ? 'from-amber-600 to-amber-700' : 'from-orange-500 to-orange-600'} flex items-center justify-center text-white font-bold text-xl shadow-md`}>
+                        <div className="relative shrink-0">
+                          <div className={`w-12 h-12 md:w-14 md:h-14 rounded-full bg-linear-to-br ${item.person.gender === 'M' ? 'from-amber-600 to-amber-700' : 'from-orange-500 to-orange-600'} flex items-center justify-center text-white font-bold text-lg md:text-xl shadow-md`}>
                             {connectionService.getAvatarInitial(item.person.full_name)}
                           </div>
                           {item.person.is_placeholder && (
@@ -994,21 +994,21 @@ export default function ConnectionsPage() {
                             </span>
                           )}
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold text-gray-900">{item.person.full_name}</h3>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-semibold text-gray-900 truncate">{item.person.full_name}</h3>
                             {item.person.is_placeholder && (
-                              <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium">
+                              <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full text-[10px] md:text-xs font-medium whitespace-nowrap">
                                 {language === 'ta' ? 'காத்திருக்கிறது' : 'Pending'}
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] md:text-xs font-medium">
                               {item.relation_label?.label || item.relation_code}
                             </span>
-                            <span className="text-xs text-gray-400">•</span>
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs text-gray-400 hidden xs:inline">•</span>
+                            <span className="text-[10px] md:text-xs text-gray-500 whitespace-nowrap">
                               {item.person.gender === 'M' ? '👨' : '👩'} {item.person.gender === 'M' ? (language === 'ta' ? 'ஆண்' : 'Male') : (language === 'ta' ? 'பெண்' : 'Female')}
                             </span>
                           </div>
@@ -1016,10 +1016,10 @@ export default function ConnectionsPage() {
                       </div>
                       <button
                         onClick={() => handleViewPersonDetails(item.person)}
-                        className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-orange-100 hover:text-orange-600 transition-all flex items-center gap-2"
+                        className="w-full sm:w-auto px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-orange-100 hover:text-orange-600 transition-all flex items-center justify-center gap-2"
                       >
                         <Eye className="h-4 w-4" />
-                        <span className="hidden sm:inline">{language === 'ta' ? 'பார்க்க' : 'View'}</span>
+                        <span>{language === 'ta' ? 'பார்க்க' : 'View'}</span>
                       </button>
                     </div>
                   ))}
@@ -1040,79 +1040,79 @@ export default function ConnectionsPage() {
             {activeTab === 'requests' && (
               <div className="space-y-4">
                 {receivedRequests.map((invitation) => (
-                  <div
-                    key={invitation.id}
-                    className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 bg-white border border-gray-200 rounded-xl hover:shadow-lg transition-all gap-4"
-                  >
-                    <div className="flex items-center gap-4 flex-1 w-full">
-                      <div className="relative">
-                        <div className="w-16 h-16 rounded-full bg-linear-to-br from-amber-900 via-amber-800 to-orange-900 flex items-center justify-center text-white font-bold text-xl shadow-lg">
-                          {invitation.invited_by_name?.charAt(0).toUpperCase() || '?'}
-                        </div>
-                        {!invitation.is_expired && invitation.status === 'pending' && (
-                          <span className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 border-2 border-white rounded-full animate-pulse"></span>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 flex-wrap">
-                          <h3 className="font-semibold text-gray-900 text-lg">{invitation.invited_by_name}</h3>
-                          {getStatusBadge(invitation)}
-                        </div>
-                        <div className="flex items-center gap-3 mt-2">
-                          <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-medium">
-                            {invitation.person_name}
-                          </span>
-                          <span className="text-sm text-gray-500">
-                            {connectionService.formatRelationCode(invitation.original_relation_code)}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-4 w-4" />
-                            {invitation.time_ago}
-                          </span>
-                          {invitation.invited_by_mobile && (
-                            <span className="flex items-center gap-1">
-                              <Phone className="h-4 w-4" />
-                              {formatMobileNumber(invitation.invited_by_mobile)}
-                            </span>
+                    <div
+                      key={invitation.id}
+                      className="flex flex-col items-stretch p-4 md:p-6 bg-white border border-gray-200 rounded-xl hover:shadow-lg transition-all gap-4"
+                    >
+                      <div className="flex items-start gap-3 md:gap-4 w-full">
+                        <div className="relative shrink-0">
+                          <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-linear-to-br from-amber-900 via-amber-800 to-orange-900 flex items-center justify-center text-white font-bold text-lg md:text-xl shadow-lg">
+                            {invitation.invited_by_name?.charAt(0).toUpperCase() || '?'}
+                          </div>
+                          {!invitation.is_expired && invitation.status === 'pending' && (
+                            <span className="absolute -top-1 -right-1 w-3 h-3 md:w-4 md:h-4 bg-yellow-400 border-2 border-white rounded-full animate-pulse"></span>
                           )}
                         </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-semibold text-gray-900 text-base md:text-lg truncate">{invitation.invited_by_name}</h3>
+                            <div className="shrink-0">{getStatusBadge(invitation)}</div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] md:text-sm font-medium">
+                              {invitation.person_name}
+                            </span>
+                            <span className="text-[10px] md:text-sm text-gray-500 truncate">
+                              {connectionService.formatRelationCode(invitation.original_relation_code)}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 mt-2 text-[10px] md:text-sm text-gray-500">
+                            <span className="flex items-center gap-1">
+                              <Clock className="h-3 w-3 md:h-4 md:h-4" />
+                              {invitation.time_ago}
+                            </span>
+                            {invitation.invited_by_mobile && (
+                              <span className="flex items-center gap-1">
+                                <Phone className="h-3 w-3 md:h-4 md:h-4" />
+                                {formatMobileNumber(invitation.invited_by_mobile)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 xs:grid-cols-2 sm:flex sm:items-center gap-2 w-full">
+                        <button
+                          onClick={() => handleViewGenealogy(invitation.id)}
+                          disabled={loadingGenealogy}
+                          className="px-3 py-2 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 text-white rounded-lg hover:from-orange-700 hover:to-amber-700 transition-all font-medium flex items-center justify-center gap-2 shadow-sm text-sm"
+                        >
+                          {loadingGenealogy ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                          <span>{language === 'ta' ? 'பார்க்க' : 'View'}</span>
+                        </button>
+                        {!invitation.is_expired && invitation.status === 'pending' && (
+                          <>
+                            <button
+                              onClick={() => handleAccept(invitation.id)}
+                              className="px-3 py-2 bg-linear-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all font-medium flex items-center justify-center gap-2 shadow-sm text-sm"
+                            >
+                              <UserCheck className="h-4 w-4" />
+                              <span>{language === 'ta' ? 'ஏற்க' : 'Accept'}</span>
+                            </button>
+                            <button
+                              onClick={() => handleReject(invitation.id)}
+                              className="px-3 py-2 bg-linear-to-r from-red-500 to-rose-600 text-white rounded-lg hover:from-red-600 hover:to-rose-700 transition-all font-medium flex items-center justify-center gap-2 shadow-sm text-sm"
+                            >
+                              <UserX className="h-4 w-4" />
+                              <span>{language === 'ta' ? 'நிராகரி' : 'Reject'}</span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
-                      <button
-                        onClick={() => handleViewGenealogy(invitation.id)}
-                        disabled={loadingGenealogy}
-                        className="flex-1 sm:flex-none px-4 py-2.5 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 text-white rounded-lg hover:from-orange-700 hover:to-amber-700 transition-all font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
-                      >
-                        {loadingGenealogy ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
-                        {language === 'ta' ? 'பார்க்க' : 'View'}
-                      </button>
-                      {!invitation.is_expired && invitation.status === 'pending' && (
-                        <>
-                          <button
-                            onClick={() => handleAccept(invitation.id)}
-                            className="flex-1 sm:flex-none px-4 py-2.5 bg-linear-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
-                          >
-                            <UserCheck className="h-4 w-4" />
-                            {language === 'ta' ? 'ஏற்க' : 'Accept'}
-                          </button>
-                          <button
-                            onClick={() => handleReject(invitation.id)}
-                            className="flex-1 sm:flex-none px-4 py-2.5 bg-linear-to-r from-red-500 to-rose-600 text-white rounded-lg hover:from-red-600 hover:to-rose-700 transition-all font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
-                          >
-                            <UserX className="h-4 w-4" />
-                            {language === 'ta' ? 'நிராகரி' : 'Reject'}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
                 ))}
 
                 {receivedRequests.length === 0 && (
@@ -1139,15 +1139,15 @@ export default function ConnectionsPage() {
                         invitation.is_expired ? 'bg-red-500' : 'bg-gray-500'
                       }`} />
 
-                    <div className="p-6">
+                    <div className="p-4 md:p-6">
                       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                        <div className="flex items-start gap-4 flex-1">
-                          <div className="relative">
-                            <div className={`w-16 h-16 rounded-2xl bg-linear-to-br ${invitation.person_gender === 'M' ? 'from-amber-600 to-amber-700' : 'from-orange-500 to-orange-600'
-                              } flex items-center justify-center text-white font-bold text-2xl shadow-lg`}>
+                        <div className="flex flex-col sm:flex-row items-start gap-4 flex-1">
+                          <div className="relative shrink-0 mx-auto sm:mx-0">
+                            <div className={`w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-linear-to-br ${invitation.person_gender === 'M' ? 'from-amber-600 to-amber-700' : 'from-orange-500 to-orange-600'
+                              } flex items-center justify-center text-white font-bold text-xl md:text-2xl shadow-lg`}>
                               {invitation.person_name?.charAt(0).toUpperCase() || '?'}
                             </div>
-                            <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-4 border-white flex items-center justify-center text-xs ${invitation.status === 'accepted' ? 'bg-green-500 text-white' :
+                            <div className={`absolute -bottom-1 -right-1 w-5 h-5 md:w-6 md:h-6 rounded-full border-2 md:border-4 border-white flex items-center justify-center text-[10px] md:text-xs ${invitation.status === 'accepted' ? 'bg-green-500 text-white' :
                               invitation.status === 'pending' && !invitation.is_expired ? 'bg-yellow-500 text-white' :
                                 invitation.is_expired ? 'bg-red-500 text-white' : 'bg-gray-500 text-white'
                               }`}>
@@ -1157,38 +1157,38 @@ export default function ConnectionsPage() {
                             </div>
                           </div>
 
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 flex-wrap">
-                              <h3 className="text-xl font-bold text-gray-900">{invitation.person_name}</h3>
-                              {getStatusBadge(invitation)}
+                          <div className="flex-1 min-w-0 text-center sm:text-left w-full">
+                            <div className="flex flex-col sm:flex-row items-center gap-2 flex-wrap justify-center sm:justify-start">
+                              <h3 className="text-lg md:text-xl font-bold text-gray-900 truncate">{invitation.person_name}</h3>
+                              <div className="shrink-0">{getStatusBadge(invitation)}</div>
                             </div>
 
-                            <div className="flex items-center gap-3 mt-2">
-                              <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-sm font-bold">
+                            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-2">
+                              <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] md:text-sm font-bold">
                                 {connectionService.formatRelationCode(invitation.original_relation_code)}
                               </span>
-                              <span className="text-sm text-gray-600 flex items-center gap-1">
-                                <Phone className="h-4 w-4" />
-                                {invitation.to_user_name || invitation.recipient_display || invitation.person_name}
+                              <span className="text-[10px] md:text-sm text-gray-600 flex items-center gap-1">
+                                <Phone className="h-3 w-3 md:h-4 md:h-4" />
+                                <span className="truncate">{invitation.to_user_name || invitation.recipient_display || invitation.person_name}</span>
                               </span>
                             </div>
 
-                            <div className="flex items-center gap-4 mt-3 text-sm">
+                            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 mt-3 text-[10px] md:text-sm">
                               <span className="flex items-center gap-1 text-gray-500">
-                                <Clock className="h-4 w-4" />
+                                <Clock className="h-3 w-3 md:h-4 md:h-4" />
                                 {invitation.time_ago}
                               </span>
                               {invitation.status === 'accepted' && invitation.accepted_at && (
                                 <span className="flex items-center gap-1 text-green-600">
-                                  <Calendar className="h-4 w-4" />
-                                  {language === 'ta' ? 'ஏற்கப்பட்டது:' : 'Accepted:'} {formatDate(invitation.accepted_at)}
+                                  <Calendar className="h-3 w-3 md:h-4 md:h-4" />
+                                  <span className="whitespace-nowrap">{language === 'ta' ? 'ஏற்கப்பட்டது:' : 'Accepted:'} {formatDate(invitation.accepted_at)}</span>
                                 </span>
                               )}
                             </div>
                           </div>
                         </div>
 
-                        <div className="flex flex-row lg:flex-col items-center gap-2 lg:min-w-32">
+                        <div className="flex flex-col items-stretch gap-2 lg:min-w-32">
                           {invitation.status === 'accepted' ? (
                             <div className="w-full px-4 py-2.5 bg-green-100 text-green-700 rounded-lg text-sm font-bold flex items-center justify-center gap-2 border border-green-200">
                               <UserCheck className="h-4 w-4" />
