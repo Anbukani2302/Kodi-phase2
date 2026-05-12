@@ -607,6 +607,16 @@ export default function ChatPage() {
   const [optionsFor, setOptionsFor] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
+  const [downloadedAtts, setDownloadedAtts] = useState<Set<number>>(new Set());
+  const handleDownload = async (attId: number, filename: string) => {
+    try {
+      await API.downloadAttachment(attId, filename);
+      setDownloadedAtts(prev => new Set(prev).add(attId));
+    } catch {
+      toast('Download failed', 'error');
+    }
+  };
+
   // ── Modals ────────────────────────────────────────────────────────────────
   const [modal, setModal] = useState<
     | 'none'
@@ -2359,19 +2369,27 @@ export default function ChatPage() {
                           )}
 
                           {/* Attachments */}
-                          {msg.attachments?.map(att => (
-                            <div
-                              key={att.id}
-                              className="attachment-chip"
-                              onClick={() => API.downloadAttachment(att.id, att.filename).catch(() => toast('Download failed', 'error'))}
-                            >
-                              <FileIcon size={14} color="var(--accent)" />
-                              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {att.filename}
-                              </span>
-                              <Download size={12} color="var(--text-muted)" />
-                            </div>
-                          ))}
+                          {msg.attachments?.map(att => {
+                            const isDownloaded = downloadedAtts.has(att.id);
+                            return (
+                              <div
+                                key={att.id}
+                                className="attachment-chip"
+                                onClick={() => !isDownloaded && handleDownload(att.id, att.filename)}
+                                style={{ cursor: isDownloaded ? 'default' : 'pointer', opacity: isDownloaded ? 0.8 : 1 }}
+                              >
+                                <FileIcon size={14} color="var(--accent)" />
+                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: isDownloaded ? 'none' : 'none' }}>
+                                  {att.filename}
+                                </span>
+                                {isDownloaded ? (
+                                  <Check size={12} color="#10b981" />
+                                ) : (
+                                  <Download size={12} color="var(--text-muted)" />
+                                )}
+                              </div>
+                            );
+                          })}
 
                           {/* Meta: time + edited + ticks */}
                           <div className="msg-meta">
