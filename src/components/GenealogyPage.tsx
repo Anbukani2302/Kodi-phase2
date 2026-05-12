@@ -3480,12 +3480,10 @@ const GenealogyPage = () => {
     });
 
     // Allow click if in path or normal navigation rules
-    const isHighlighted = isRoot || isAshramam || isAshramamAdd || isInPath ||
-      node.id === activeParentId ||
-      (activeParentId && node.id.startsWith(activeParentId + '-')) ||
-      node.parentId === activeParentId ||
-      (!activeParentId && node.parentId === 'root') ||
-      (activeParentId && nodes[activeParentId]?.parentId === node.id);
+    // Stricter check: only allow current generation or focus to match visual state
+    const isHighlighted = isInPath || isAshramam || isAshramamAdd || isBlinkingNode ||
+      (!activeParentId && (isRoot || node.parentId === 'root')) ||
+      (activeParentId && (node.id === activeParentId || node.parentId === activeParentId));
 
     if (!isHighlighted) {
       console.log("Ignoring click on non-path node:", node.id);
@@ -6185,12 +6183,12 @@ const GenealogyPage = () => {
                         }}
                         transform={`rotate(${labelAngle * (180 / Math.PI)}, ${labelX}, ${labelY})`}
                       >
-                        {child.arrowLabel ? child.arrowLabel : getArrowLabel(
+                        {(!isTamil || !child.arrowLabel) ? getArrowLabel(
                           node.gender || 'M',
                           child.relation,
-                          child.relationLabel,
+                          getRelationLabel(child.relation, isTamil),
                           isTamil
-                        )}
+                        ) : child.arrowLabel}
                       </text>
                     )}
                   </g>
@@ -6284,12 +6282,12 @@ const GenealogyPage = () => {
                         }}
                         transform={`rotate(${labelAngle * (180 / Math.PI)}, ${labelX}, ${labelY})`}
                       >
-                        {child.arrowLabel ? child.arrowLabel : getArrowLabel(
+                        {(!isTamil || !child.arrowLabel) ? getArrowLabel(
                           node.gender || 'M',
                           child.relation,
-                          child.relationLabel,
+                          getRelationLabel(child.relation, isTamil),
                           isTamil
-                        )}
+                        ) : child.arrowLabel}
                       </text>
                     )}
                   </g>

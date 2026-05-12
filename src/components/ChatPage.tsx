@@ -1,1914 +1,2851 @@
-import React from "react";
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Plus, Search, Users, Loader2, MessageCircle, ArrowLeft, MoreVertical, Paperclip, Trash, Trash2, Check, CheckCheck, X, FileIcon, Download, ChevronDown } from 'lucide-react';
+// ChatPage.tsx — Full Production Chat UI
+// Integrates with Django Channels WebSocket + DRF REST API
+// Matches backend: consumers.py, serializers.py, views.py, models.py
+import { BASE_URL } from '../services/api';
+import React, {
+  useState, useEffect, useRef, useCallback, useMemo
+} from 'react';
+import {
+  Send, Plus, Search, Users, Loader2, MessageCircle,
+  ArrowLeft, MoreVertical, Paperclip, Check, CheckCheck,
+  X, FileIcon, Download, ChevronDown, Trash2, Copy,
+  Pencil, Reply, Shield, Bell, BellOff, UserMinus,
+  LogOut, UserPlus, Eye, Hash, Phone, AlertCircle,
+  Smile, Image as ImageIcon, ChevronUp, RefreshCw
+} from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { chatService, Conversation, Message, User } from '../services/chatService';
-import { WebSocketService } from '../services/websocket';
-import { useAuth } from '../hooks/useAuth';
-import { connectionService } from '../services/connectionService';
-import api from '../services/api';
-import { toast } from 'react-hot-toast';
 
-// Define WebSocket callbacks interface
-interface WebSocketCallbacks {
-  onMessage: (message: Message) => void;
-  onTyping: (senderId: number, isTyping: boolean) => void;
-  onStatus?: (userId: number, status: string) => void;
-  onError: (errorMsg: string) => void;
-  onHistory: (history: Message[]) => void;
+// ─────────────────────────────────────────────────────────────────────────────
+// TYPES  (mirrors backend serializers exactly)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface User {
+  id: number;
+  mobile_number: string;
 }
 
-export default function ChatPage() {
-  const { t } = useLanguage();
-  const { user, accessToken } = useAuth();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [messageInput, setMessageInput] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [typingUsers, setTypingUsers] = useState<Set<number>>(new Set());
-  const [onlineUsers, setOnlineUsers] = useState<Set<number>>(new Set());
-  const [downloadedFiles, setDownloadedFiles] = useState<Set<number>>(new Set());
-  const [error, setError] = useState<string | null>(null);
-  const [showNewChatModal, setShowNewChatModal] = useState(false);
-  const [newChatUserId, setNewChatUserId] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'direct' | 'group'>('all');
+export interface Attachment {
+  id: number;
+  filename: string;
+  file_type: string;
+  url: string;
+}
 
-  // Group Chat State
-  const [isGroupChat, setIsGroupChat] = useState(false);
-  const [newGroupName, setNewGroupName] = useState('');
-  const [newGroupMembers, setNewGroupMembers] = useState('');
+export interface Message {
+  id: number;
+  content: string;
+  sender_id: number;
+  sender_mobile: string;
+  created_at: string;
+  is_deleted: boolean;
+  is_edited: boolean;
+  edited_at: string | null;
+  attachments: Attachment[];
+  is_delivered: boolean;
+  is_read: boolean;
+  read_at: string | null;
+  delivered_at: string | null;
+  isOwn?: boolean; // computed client-side
+}
 
-  // Block User States
-  const [isBlockedByMe, setIsBlockedByMe] = useState(false);
-  const [amIBlocked, setAmIBlocked] = useState(false);
-  const [showChatOptions, setShowChatOptions] = useState(false);
-  const [showBlockedUsersModal, setShowBlockedUsersModal] = useState(false);
-  const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+export interface Conversation {
+  id: number;
+  room_type: 'direct' | 'group';
+  name: string | null;
+  participants: User[];
+  unread_count: number;
+  last_message: {
+    content: string;
+    sender_mobile: string;
+    created_at: string;
+  } | null;
+  created_at: string;
+  other_user_status?: 'online' | 'offline';
+}
 
-  const wsService = useRef<WebSocketService | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isTyping, setIsTyping] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
-  const [editMessageContent, setEditMessageContent] = useState('');
-  const [showMessageOptions, setShowMessageOptions] = useState<number | null>(null);
-  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
-  const [addMemberUserId, setAddMemberUserId] = useState('');
-  const [addMemberSearchText, setAddMemberSearchText] = useState('');
-  const [showNicknameModal, setShowNicknameModal] = useState(false);
-  const [nicknameValue, setNicknameValue] = useState('');
-  const [showHeaderOptions, setShowHeaderOptions] = useState(false);
-  const [nicknames, setNicknames] = useState<Record<number, string>>({});
-  const [showClearChatModal, setShowClearChatModal] = useState(false);
-  const [msgToDeleteId, setMsgToDeleteId] = useState<number | null>(null);
-  const [showMsgDeleteModal, setShowMsgDeleteModal] = useState(false);
-  const [showViewMembersModal, setShowViewMembersModal] = useState(false);
-  const [groupMembers, setGroupMembers] = useState<User[]>([]);
-  const [fetchingMembers, setFetchingMembers] = useState(false);
-  const [removingMemberId, setRemovingMemberId] = useState<number | null>(null);
-  const [showExitGroupModal, setShowExitGroupModal] = useState(false);
-  const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+export interface BlockStatus {
+  i_blocked_them: boolean;
+  they_blocked_me: boolean;
+  chat_allowed: boolean;
+}
 
-  // Scroll to bottom of messages
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
+interface GroupMember {
+  user_id: number;
+  mobile_number: string;
+  profile_name: string | null;
+  profile_image: string | null;
+  role: 'admin' | 'member';
+  joined_at: string;
+  is_muted: boolean;
+}
 
-  useEffect(() => {
-    // Prevent document-level scroll for an app-like experience
-    const originalStyle = window.getComputedStyle(document.body).overflow;
-    document.body.style.overflow = 'hidden';
+// ─────────────────────────────────────────────────────────────────────────────
+// WEBSOCKET SERVICE
+// ─────────────────────────────────────────────────────────────────────────────
 
-    // Check for mobile number in URL parameter and start direct chat
-    const urlParams = new URLSearchParams(window.location.search);
-    const mobileNumber = urlParams.get('mobile');
-    if (mobileNumber) {
-      startDirectChatWithMobile(mobileNumber);
+interface WSCallbacks {
+  onMessage: (msg: Message) => void;
+  onHistory: (msgs: Message[]) => void;
+  onTyping: (senderId: number, isTyping: boolean) => void;
+  onUserStatus: (userId: number, status: 'online' | 'offline') => void;
+  onDelivered: (messageId: number, deliveredTo: number) => void;
+  onSeen: (messageId: number, seenBy: number) => void;
+  onError: (detail: string) => void;
+  onConnected: () => void;
+  onDisconnected: () => void;
+}
+
+class ChatWebSocket {
+  private ws: WebSocket | null = null;
+  private roomId: number;
+  private token: string;
+  private cbs: WSCallbacks;
+  private retryCount = 0;
+  private maxRetries = 8;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private intentionalClose = false;
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
+
+  constructor(roomId: number, token: string, cbs: WSCallbacks) {
+    this.roomId = roomId;
+    this.token = token;
+    this.cbs = cbs;
+  }
+
+  connect() {
+    this.intentionalClose = false;
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const base = (import.meta as any).env?.VITE_WS_URL ?? `${proto}://${window.location.host}`;
+    const url = `${base}/ws/chat/${this.roomId}/?token=${encodeURIComponent(this.token)}`;
+
+    try {
+      this.ws = new WebSocket(url);
+    } catch {
+      this.scheduleRetry();
+      return;
     }
 
+    this.ws.onopen = () => {
+      this.retryCount = 0;
+      this.cbs.onConnected();
+      // keepalive ping every 25s
+      this.pingTimer = setInterval(() => this.send({ type: 'ping' }), 25000);
+    };
+
+    this.ws.onmessage = (e: MessageEvent) => {
+      let data: any;
+      try { data = JSON.parse(e.data); } catch { return; }
+      this.route(data);
+    };
+
+    this.ws.onerror = () => {
+      this.cbs.onError('Network error');
+    };
+
+    this.ws.onclose = (ev) => {
+      if (this.pingTimer) clearInterval(this.pingTimer);
+      this.cbs.onDisconnected();
+      if (!this.intentionalClose && ev.code !== 4001 && ev.code !== 4003) {
+        this.scheduleRetry();
+      }
+    };
+  }
+
+  private route(data: any) {
+    switch (data.type) {
+      case 'message':
+        this.cbs.onMessage(this.normalize(data));
+        break;
+      case 'history':
+        if (Array.isArray(data.messages))
+          this.cbs.onHistory(data.messages.map((m: any) => this.normalize(m)));
+        break;
+      case 'typing':
+        this.cbs.onTyping(Number(data.sender_id), Boolean(data.is_typing));
+        break;
+      case 'user_status':
+        this.cbs.onUserStatus(Number(data.user_id), data.status);
+        break;
+      case 'delivered':
+      case 'delivery_receipt':
+        this.cbs.onDelivered(Number(data.message_id), Number(data.delivered_to));
+        break;
+      case 'seen':
+      case 'message_seen':
+        this.cbs.onSeen(Number(data.message_id), Number(data.seen_by));
+        break;
+      case 'error':
+        this.cbs.onError(data.detail ?? 'Server error');
+        break;
+      // pong / ping — ignore
+    }
+  }
+
+  private normalize(raw: any): Message {
+    return {
+      id: Number(raw.id ?? raw.message_id),
+      content: raw.content ?? '',
+      sender_id: Number(raw.sender_id ?? 0),
+      sender_mobile: raw.sender_mobile ?? '',
+      created_at: raw.created_at ?? new Date().toISOString(),
+      is_deleted: raw.is_deleted ?? false,
+      is_edited: raw.is_edited ?? false,
+      edited_at: raw.edited_at ?? null,
+      attachments: (raw.attachments ?? []).map((a: any) => ({
+        id: a.id,
+        filename: a.filename,
+        file_type: a.file_type ?? a.content_type ?? '',
+        url: a.url ?? a.file_url ?? '',
+      })),
+      is_delivered: Boolean(raw.is_delivered),
+      is_read: Boolean(raw.is_read),
+      read_at: raw.read_at ?? null,
+      delivered_at: raw.delivered_at ?? null,
+    };
+  }
+
+  private scheduleRetry() {
+    if (this.retryCount >= this.maxRetries) {
+      this.cbs.onError('Unable to reconnect. Please refresh.');
+      return;
+    }
+    const delay = Math.min(500 * Math.pow(2, this.retryCount), 30000);
+    this.retryCount++;
+    this.retryTimer = setTimeout(() => this.connect(), delay);
+  }
+
+  get connected() {
+    return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  private send(payload: object) {
+    if (!this.connected) return;
+    this.ws!.send(JSON.stringify(payload));
+  }
+
+  sendMessage(content: string) { this.send({ type: 'message', content }); }
+  sendTyping(isTyping: boolean) { this.send({ type: 'typing', is_typing: isTyping }); }
+  sendRead(messageId: number) { this.send({ type: 'read', message_id: messageId }); }
+
+  disconnect() {
+    this.intentionalClose = true;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    if (this.pingTimer) clearInterval(this.pingTimer);
+    this.ws?.close();
+    this.ws = null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API SERVICE  (maps to views.py endpoints)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getAuthHeaders = (): Record<string, string> => {
+  const token = localStorage.getItem('authToken') ??
+    (() => { try { return JSON.parse(localStorage.getItem('user') ?? '{}').token; } catch { return null; } })();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+const apiFetch = async (url: string, opts: RequestInit = {}) => {
+  const fullUrl = `${BASE_URL}${url}`;
+  const res = await fetch(fullUrl, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+      ...(opts.headers as Record<string, string> ?? {}),
+    },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw Object.assign(new Error(body.detail ?? `HTTP ${res.status}`), { status: res.status, body });
+  }
+  if (res.status === 204) return null;
+  return res.json();
+};
+
+const transformConv = (r: any): Conversation => ({
+  id: r.id,
+  room_type: r.room_type,
+  name: r.name ?? null,
+  participants: r.members ?? [],
+  unread_count: r.unread_count ?? 0,
+  last_message: r.last_message ?? null,
+  created_at: r.created_at,
+});
+
+const transformMsg = (m: any): Message => ({
+  id: Number(m.id),
+  content: m.content ?? '',
+  sender_id: Number(m.sender_id ?? m.sender?.id ?? 0),
+  sender_mobile: m.sender_mobile ?? m.sender?.mobile_number ?? '',
+  created_at: m.created_at ?? new Date().toISOString(),
+  is_deleted: m.is_deleted ?? false,
+  is_edited: m.is_edited ?? false,
+  edited_at: m.edited_at ?? null,
+  attachments: (m.attachments ?? []).map((a: any) => ({
+    id: a.id,
+    filename: a.filename ?? a.file_name ?? '',
+    file_type: a.content_type ?? a.file_type ?? '',
+    url: a.file_url ?? a.url ?? '',
+  })),
+  is_delivered: Boolean(m.is_delivered),
+  is_read: Boolean(m.is_read),
+  read_at: m.read_at ?? null,
+  delivered_at: m.delivered_at ?? null,
+});
+
+const API = {
+  // GET /api/chat/rooms/?type=direct|group
+  getRooms: async (type?: string): Promise<Conversation[]> => {
+    const url = type && type !== 'all' ? `api/chat/rooms/?type=${type}` : 'api/chat/rooms/';
+    const data = await apiFetch(url);
+    const list = data.results ?? data;
+    return Array.isArray(list) ? list.map(transformConv) : [];
+  },
+
+  // GET /api/chat/rooms/:id/messages/?limit=N&offset=N
+  getMessages: async (roomId: number, limit = 30, offset = 0) => {
+    const data = await apiFetch(`api/chat/rooms/${roomId}/messages/?limit=${limit}&offset=${offset}`);
+    const results = data.results ?? data;
+    return {
+      messages: Array.isArray(results) ? results.map(transformMsg) : [],
+      count: data.count ?? results.length,
+    };
+  },
+
+  // POST /api/chat/rooms/:id/messages/  (REST fallback / file upload)
+  sendMessage: async (roomId: number, content: string, files?: File[]): Promise<Message> => {
+    if (files && files.length > 0) {
+      const fd = new FormData();
+      fd.append('content', content);
+      files.forEach(f => fd.append('attachments', f));
+      const res = await fetch(`api/chat/rooms/${roomId}/messages/`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders() },
+        body: fd,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return transformMsg(await res.json());
+    }
+    const data = await apiFetch(`api/chat/rooms/${roomId}/messages/`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+    return transformMsg(data);
+  },
+
+  // POST /api/chat/rooms/:id/read/
+  markRoomRead: (roomId: number) =>
+    apiFetch(`api/chat/rooms/${roomId}/read/`, { method: 'POST' }),
+
+  // PUT /api/chat/messages/:id/
+  editMessage: async (msgId: number, content: string): Promise<Message> => {
+    const data = await apiFetch(`api/chat/messages/${msgId}/`, {
+      method: 'PUT',
+      body: JSON.stringify({ content }),
+    });
+    return transformMsg(data.message ?? data);
+  },
+
+  // DELETE /api/chat/messages/:id/delete/
+  deleteMessage: (msgId: number) =>
+    apiFetch(`api/chat/messages/${msgId}/delete/`, { method: 'DELETE' }),
+
+  // POST /api/chat/rooms/direct/
+  createDirect: async (targetUserId: number): Promise<Conversation> => {
+    const data = await apiFetch('api/chat/rooms/direct/', {
+      method: 'POST',
+      body: JSON.stringify({ target_user_id: targetUserId }),
+    });
+    return transformConv(data);
+  },
+
+  // POST /api/chat/rooms/group/
+  createGroup: async (name: string, memberIds: number[]): Promise<Conversation> => {
+    const data = await apiFetch('api/chat/rooms/group/', {
+      method: 'POST',
+      body: JSON.stringify({ name, member_ids: memberIds }),
+    });
+    return transformConv(data);
+  },
+
+  // GET /api/chat/rooms/:id/members/
+  getGroupMembers: async (roomId: number): Promise<GroupMember[]> => {
+    const data = await apiFetch(`api/chat/rooms/${roomId}/members/`);
+    const list = data.results ?? data;
+    return Array.isArray(list) ? list : [];
+  },
+
+  // POST /api/chat/rooms/:id/members/add   (note: no trailing slash per views.py)
+  addMembers: (roomId: number, ids: number[]) =>
+    apiFetch(`api/chat/rooms/${roomId}/members/add`, {
+      method: 'POST',
+      body: JSON.stringify({ member_ids: ids }),
+    }),
+
+  // POST /api/chat/rooms/:id/remove-members
+  removeMembers: (roomId: number, ids: number[]) =>
+    apiFetch(`api/chat/rooms/${roomId}/remove-members`, {
+      method: 'POST',
+      body: JSON.stringify({ member_ids: ids }),
+    }),
+
+  // POST /api/chat/rooms/:id/exit/
+  exitGroup: (roomId: number) =>
+    apiFetch(`api/chat/rooms/${roomId}/exit/`, { method: 'POST' }),
+
+  // POST /api/chat/rooms/:id/delete/  → clears chat (sets cleared_at)
+  clearChat: (roomId: number) =>
+    apiFetch(`api/chat/rooms/${roomId}/delete/`, { method: 'POST' }),
+
+  // POST /api/chat/block/
+  blockUser: (userId: number) =>
+    apiFetch('api/chat/block/', { method: 'POST', body: JSON.stringify({ user_id: userId }) }),
+
+  // POST /api/chat/unblock/
+  unblockUser: (userId: number) =>
+    apiFetch('api/chat/unblock/', { method: 'POST', body: JSON.stringify({ user_id: userId }) }),
+
+  // GET /api/chat/blocked/
+  getBlocked: async () => {
+    const data = await apiFetch('api/chat/blocked/');
+    return Array.isArray(data) ? data : [];
+  },
+
+  // GET /api/chat/block-status/:id/
+  blockStatus: async (userId: number): Promise<BlockStatus> =>
+    apiFetch(`api/chat/block-status/${userId}/`),
+
+  // GET /api/chat/contacts/
+  getNicknames: async (): Promise<{ contact_id: number; nickname: string }[]> => {
+    const data = await apiFetch('api/chat/contacts/');
+    return Array.isArray(data) ? data : [];
+  },
+
+  // POST /api/chat/contacts/
+  setNickname: (contactId: number, nickname: string) =>
+    apiFetch('api/chat/contacts/', {
+      method: 'POST',
+      body: JSON.stringify({ contact_id: contactId, nickname }),
+    }),
+
+  // GET /api/auth/api/mobile-search/?q=
+  mobileSearch: async (q: string): Promise<any[]> => {
+    if (!q || q.length < 2) return [];
+    try {
+      const data = await apiFetch(`api/auth/api/mobile-search/?q=${encodeURIComponent(q)}`);
+      const list = data.results ?? data;
+      return Array.isArray(list) ? list : [];
+    } catch { return []; }
+  },
+
+  // GET /api/chat/attachments/:id/download/
+  downloadAttachment: async (id: number, filename: string) => {
+    const res = await fetch(`/api/chat/attachments/${id}/download/`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Download failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getCurrentUser = (): { id: number; mobile_number: string } | null => {
+  try {
+    const s = JSON.parse(localStorage.getItem('user') ?? '{}');
+    if (s.id) return { id: Number(s.id), mobile_number: s.mobile_number ?? '' };
+  } catch { }
+  return null;
+};
+
+const getToken = () =>
+  localStorage.getItem('authToken') ??
+  (() => { try { return JSON.parse(localStorage.getItem('user') ?? '{}').token; } catch { return null; } })();
+
+const dedup = (msgs: Message[]): Message[] => {
+  const map = new Map<number, Message>();
+  for (const m of msgs) map.set(m.id, m);
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+};
+
+const fmtTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+const fmtDate = (iso: string) => {
+  const d = new Date(iso);
+  const today = new Date();
+  const diff = Math.floor((today.getTime() - d.getTime()) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+};
+
+const sameDay = (a: string, b: string) =>
+  new Date(a).toDateString() === new Date(b).toDateString();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TOAST  (lightweight inline toast — no external dependency needed)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const useToast = () => {
+  const [toasts, setToasts] = useState<{ id: number; msg: string; type: 'success' | 'error' | 'info' }[]>([]);
+  const show = useCallback((msg: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Date.now();
+    setToasts(p => [...p, { id, msg, type }]);
+    setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 3500);
+  }, []);
+  return { toasts, toast: show };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUB-COMPONENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const Avatar: React.FC<{
+  name: string; size?: 'sm' | 'md' | 'lg'; isGroup?: boolean; online?: boolean
+}> = ({ name, size = 'md', isGroup = false, online }) => {
+  const sz = size === 'sm' ? 32 : size === 'lg' ? 48 : 40;
+  const fs = size === 'sm' ? 13 : size === 'lg' ? 18 : 15;
+  const initial = (name || '?').charAt(0).toUpperCase();
+
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <div style={{
+        width: sz, height: sz, borderRadius: '50%',
+        background: isGroup
+          ? 'linear-gradient(135deg, #78350f 0%, #431407 100%)'
+          : 'var(--accent-gradient)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        boxShadow: '0 4px 10px rgba(67, 20, 7, 0.12)',
+      }}>
+        {isGroup
+          ? <Users size={fs} color="rgba(255,255,255,0.7)" />
+          : <span style={{ color: '#fff', fontSize: fs, fontWeight: 700, fontFamily: 'var(--font-display)' }}>{initial}</span>
+        }
+      </div>
+      {online !== undefined && (
+        <div style={{
+          position: 'absolute', bottom: 1, right: 1,
+          width: 10, height: 10, borderRadius: '50%',
+          background: online ? 'var(--online)' : 'var(--text-muted)',
+          border: '2px solid var(--bg-secondary)',
+        }} />
+      )}
+    </div>
+  );
+};
+
+const Tick: React.FC<{ msg: Message }> = ({ msg }) => {
+  if (msg.is_read) return <CheckCheck size={14} color="#3b82f6" />;
+  if (msg.is_delivered) return <CheckCheck size={14} color="#9ca3af" />;
+  return <Check size={14} color="#9ca3af" />;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN COMPONENT
+// ─────────────────────────────────────────────────────────────────────────────
+
+export default function ChatPage() {
+  const { language, t } = useLanguage();
+  const { toasts, toast } = useToast();
+  const currentUser = useMemo(() => getCurrentUser(), []);
+
+  // ── Conversations ────────────────────────────────────────────────────────
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [convLoading, setConvLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'all' | 'direct' | 'group'>('all');
+  const [convSearch, setConvSearch] = useState('');
+  const [nicknames, setNicknames] = useState<Record<number, string>>({});
+
+  // ── Selected conversation ────────────────────────────────────────────────
+  const [selected, setSelected] = useState<Conversation | null>(null);
+
+  // ── Messages ─────────────────────────────────────────────────────────────
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [msgLoading, setMsgLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const LIMIT = 30;
+
+  // ── Input ─────────────────────────────────────────────────────────────────
+  const [input, setInput] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const [sending, setSending] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+
+  // ── WS state ──────────────────────────────────────────────────────────────
+  const [wsConnected, setWsConnected] = useState(false);
+  const [typingUsers, setTypingUsers] = useState<Set<number>>(new Set());
+  const wsRef = useRef<ChatWebSocket | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTypingRef = useRef(false);
+
+  // ── Block state ───────────────────────────────────────────────────────────
+  const [blockStatus, setBlockStatus] = useState<BlockStatus | null>(null);
+  const [blockedList, setBlockedList] = useState<any[]>([]);
+
+  // ── Group state ───────────────────────────────────────────────────────────
+  const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+
+  // ── Message options menu ──────────────────────────────────────────────────
+  const [optionsFor, setOptionsFor] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
+
+  // ── Modals ────────────────────────────────────────────────────────────────
+  const [modal, setModal] = useState<
+    | 'none'
+    | 'new-chat'
+    | 'new-group'
+    | 'clear-chat'
+    | 'delete-msg'
+    | 'nickname'
+    | 'blocked-users'
+    | 'group-members'
+    | 'add-member'
+    | 'exit-group'
+    | 'info'
+  >('none');
+
+  // Disable body scroll on chat page
+  useEffect(() => {
+    const originalStyle = window.getComputedStyle(document.body).overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = originalStyle;
     };
   }, []);
 
-  // Load conversations when tab changes or on mount
-  useEffect(() => {
-    const loadNicknames = async () => {
-      try {
-        const data = await chatService.getNicknames();
-        const map: Record<number, string> = {};
-        if (Array.isArray(data)) {
-          data.forEach((item: any) => {
-            if (item.contact_id && item.nickname) {
-              map[item.contact_id] = item.nickname;
-            }
-          });
-        }
-        setNicknames(map);
-      } catch (err) {
-        console.error('Failed to load nicknames:', err);
-      }
-    };
+  // ── New chat form ─────────────────────────────────────────────────────────
+  const [newChatInput, setNewChatInput] = useState('');
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupMembers, setNewGroupMembers] = useState('');
+  const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
+  const [addMemberInput, setAddMemberInput] = useState('');
+  const [addMemberId, setAddMemberId] = useState('');
+  const [nicknameInput, setNicknameInput] = useState('');
 
-    // Load everything when component mounts or activeTab changes
-    loadConversations(activeTab);
-    loadNicknames();
+  // ── Scroll / refs ─────────────────────────────────────────────────────────
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const msgContainerRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const atBottom = useRef(true);
 
-    // Always refresh blocked users from the GET api/chat/block/ endpoint
-    chatService.getBlockedUsers().then(setBlockedUsers).catch(console.error);
+  // ─── Computed ─────────────────────────────────────────────────────────────
+
+  const isOwn = useCallback((msg: Message) => {
+    if (!currentUser) return false;
+    return (
+      Number(msg.sender_id) === Number(currentUser.id) ||
+      msg.sender_mobile === currentUser.mobile_number
+    );
+  }, [currentUser]);
+
+  const getOther = useCallback((conv: Conversation) => {
+    if (conv.room_type !== 'direct') return null;
+    return conv.participants.find(p =>
+      Number(p.id) !== Number(currentUser?.id) &&
+      p.mobile_number !== currentUser?.mobile_number
+    ) ?? conv.participants[0] ?? null;
+  }, [currentUser]);
+
+  const displayName = useCallback((conv: Conversation) => {
+    if (conv.room_type === 'group') return conv.name || 'Unnamed Group';
+    const other = getOther(conv);
+    if (!other) return 'Unknown';
+    return nicknames[other.id] ?? other.mobile_number ?? `User ${other.id}`;
+  }, [getOther, nicknames]);
+
+  const filteredConvs = useMemo(() => {
+    const q = convSearch.toLowerCase().trim();
+    return conversations.filter(c => {
+      if (activeTab !== 'all' && c.room_type !== activeTab) return false;
+      if (!q) return true;
+      if (c.room_type === 'group') return (c.name ?? '').toLowerCase().includes(q);
+      const other = getOther(c);
+      return other?.mobile_number?.includes(q) ?? false;
+    });
+  }, [conversations, activeTab, convSearch, getOther]);
+
+  // ─── Load conversations + nicknames ───────────────────────────────────────
+
+  const loadConversations = useCallback(async (tab = activeTab) => {
+    try {
+      const data = await API.getRooms(tab);
+      setConversations(prev => {
+        const map = new Map(prev.map(c => [c.id, c]));
+        data.forEach(c => {
+          const existing = map.get(c.id);
+          map.set(c.id, existing ? { ...c, other_user_status: existing.other_user_status } : c);
+        });
+        return Array.from(map.values()).sort((a, b) => {
+          const ta = a.last_message?.created_at ?? a.created_at;
+          const tb = b.last_message?.created_at ?? b.created_at;
+          return new Date(tb).getTime() - new Date(ta).getTime();
+        });
+      });
+    } catch (e: any) {
+      toast('Failed to load conversations', 'error');
+    } finally {
+      setConvLoading(false);
+    }
   }, [activeTab]);
 
-  // Mark messages as read when conversation is selected or changes
+  const loadNicknames = useCallback(async () => {
+    try {
+      const data = await API.getNicknames();
+      const map: Record<number, string> = {};
+      data.forEach(n => { map[n.contact_id] = n.nickname; });
+      setNicknames(map);
+    } catch { }
+  }, []);
+
   useEffect(() => {
-    if (selectedConversation) {
-      loadMessages(selectedConversation.id);
-      setShowChatOptions(false);
+    loadConversations(activeTab);
+    loadNicknames();
+    API.getBlocked().then(setBlockedList).catch(() => { });
+  }, [activeTab]);
 
-      if (selectedConversation.room_type === 'direct') {
-        // Reset states immediately before fetching new ones to avoid UI persistence from previous chat
-        setIsBlockedByMe(false);
-        setAmIBlocked(false);
+  // ─── Load messages ────────────────────────────────────────────────────────
 
-        const localStorageUser = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null;
-        const currentUserMobile = localStorageUser?.mobile_number;
-        const currentUserId = Number(user?.id || localStorageUser?.id || localStorageUser?.user_id || localStorageUser?.pk);
-        const normalizePhone = (p: string | undefined | null) => p ? p.replace(/\D/g, '').slice(-10) : '';
-        const myMobile = normalizePhone(currentUserMobile);
-
-        const targetParticipant = selectedConversation.participants.find(p => {
-          const pId = Number(p.id);
-          const pMobile = normalizePhone(p.mobile_number);
-          const isMe = (pId !== 0 && pId === currentUserId) || (myMobile !== '' && pMobile === myMobile);
-          return !isMe;
-        }) || (selectedConversation.participants.length > 1 ? selectedConversation.participants[1] : selectedConversation.participants[0]);
-
-        if (targetParticipant?.id) {
-          chatService.checkBlockStatus(targetParticipant.id)
-            .then((status: any) => {
-              setIsBlockedByMe(status.i_blocked_them);
-              setAmIBlocked(status.they_blocked_me);
-            })
-            .catch((err) => {
-              console.error('Failed to check block status:', err);
-              // Reset on error to allow messaging by default if check fails, or keep as is?
-              // Better to reset to false to avoid accidentally locking out users on API failure
-              setIsBlockedByMe(false);
-              setAmIBlocked(false);
-            });
-        } else {
-          setIsBlockedByMe(false);
-          setAmIBlocked(false);
-        }
+  const loadMessages = useCallback(async (convId: number, off: number, reset: boolean) => {
+    if (reset) setMsgLoading(true);
+    try {
+      const { messages: msgs, count } = await API.getMessages(convId, LIMIT, off);
+      setTotalCount(count);
+      if (reset) {
+        setMessages(dedup(msgs));
+        setOffset(msgs.length);
+        setHasMore(msgs.length < count);
+        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 60);
       } else {
-        // Reset block status for group chats so messaging is never restricted
-        setIsBlockedByMe(false);
-        setAmIBlocked(false);
-      }
-
-      // Mark as read when opening conversation - This is the API call that triggers blue ticks
-      chatService.markAllAsRead(selectedConversation.id)
-        .then(() => {
-          // Update local unread count to 0 immediately
-          setConversations(prev => prev.map(conv =>
-            conv.id === selectedConversation.id ? { ...conv, unread_count: 0 } : conv
-          ));
-        })
-        .catch(console.error);
-    }
-  }, [selectedConversation, user?.id]);
-
-  // Handle window focus to refresh messages
-  useEffect(() => {
-    const handleFocus = () => {
-      if (selectedConversation) {
-        console.log('Window focused, refreshing messages...');
-        loadMessages(selectedConversation.id);
-      }
-    };
-
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [selectedConversation]);
-
-  // Update message read status periodically
-  useEffect(() => {
-    if (!selectedConversation || !user) return;
-
-    const interval = setInterval(async () => {
-      try {
-        // Get fresh messages to check read status
-        const freshMessages = await chatService.getMessages(selectedConversation.id);
-
-        setMessages(prev => {
-          return prev.map(msg => {
-            const freshMsg = freshMessages.find(m => m.id === msg.id);
-            // If the message was read, ensure it shows blue ticks
-            if (freshMsg && freshMsg.read_at !== msg.read_at) {
-              return { ...msg, read_at: freshMsg.read_at };
-            }
-            return msg;
-          });
+        // Prepend older messages; preserve scroll position
+        const container = msgContainerRef.current;
+        const prevScrollHeight = container?.scrollHeight ?? 0;
+        setMessages(prev => dedup([...msgs, ...prev]));
+        setOffset(o => o + msgs.length);
+        setHasMore(off + msgs.length < count);
+        requestAnimationFrame(() => {
+          if (container) {
+            container.scrollTop = container.scrollHeight - prevScrollHeight;
+          }
         });
-
-        // Also refresh conversations to update last message status in list
-        loadConversations(activeTab);
-      } catch (error) {
-        console.error('Error checking read status:', error);
       }
-    }, 3000); // Check every 3 seconds
+    } catch {
+      toast('Failed to load messages', 'error');
+    } finally {
+      if (reset) setMsgLoading(false);
+    }
+  }, []);
 
-    return () => clearInterval(interval);
-  }, [selectedConversation, user, activeTab]);
+  // ─── Select conversation ──────────────────────────────────────────────────
 
-  // Setup WebSocket connection
   useEffect(() => {
-    if (!selectedConversation) return;
+    if (!selected) return;
 
-    // Read token directly from localStorage (useAuth uses 'access_token' key but login stores as 'authToken')
-    const token = accessToken || localStorage.getItem('authToken');
-    if (!token) return;
+    setMessages([]);
+    setOffset(0);
+    setHasMore(false);
+    setTypingUsers(new Set());
+    setEditId(null);
+    setEditContent('');
+    setReplyTo(null);
+    setOptionsFor(null);
+    setBlockStatus(null);
+    setGroupMembers([]);
 
-    // Ensure user.id is a number, provide fallback
-    const userId = user?.id || 0;
+    loadMessages(selected.id, 0, true);
 
-    wsService.current = new WebSocketService(
-      selectedConversation.id,
-      token,
-      userId,
-      {
-        onMessage: (message: Message) => {
-          // Process attachments if they exist
-          const processedMessage = {
-            ...message,
-            attachments: message.attachments ||
-              (message as any).attachment ? [(message as any).attachment] :
-              (message as any).files ? (message as any).files : []
-          };
-
-          // Add delivered status for own messages sent via WebSocket
-          const senderId = processedMessage.sender_id || undefined; // Use undefined as fallback
-          const messageWithStatus = Number(senderId) === Number(user?.id)
-            ? { ...processedMessage, sender_id: senderId, delivered_at: new Date().toISOString() }
-            : { ...processedMessage, sender_id: senderId };
-
-          setMessages(prev => [...prev, messageWithStatus as Message]);
-          scrollToBottom();
-
-          // Refresh conversation list to update last message
-          loadConversations();
-        },
-        onTyping: (senderId: number, isTyping: boolean) => {
-          setTypingUsers(prev => {
-            const newSet = new Set(prev);
-            if (isTyping) {
-              newSet.add(senderId);
-            } else {
-              newSet.delete(senderId);
-            }
-            return newSet;
-          });
-        },
-        onError: (errorMsg: string) => {
-          setError(errorMsg);
-          setTimeout(() => setError(null), 5000);
-        },
-        onHistory: (history: Message[]) => {
-          setMessages(history);
-          scrollToBottom();
-        }
-      } as WebSocketCallbacks
+    // Mark room read
+    API.markRoomRead(selected.id).catch(() => { });
+    setConversations(prev =>
+      prev.map(c => c.id === selected.id ? { ...c, unread_count: 0 } : c)
     );
 
-    wsService.current.connect();
+    // Block status for direct rooms
+    if (selected.room_type === 'direct') {
+      const other = getOther(selected);
+      if (other) {
+        API.blockStatus(other.id)
+          .then(setBlockStatus)
+          .catch(() => { });
+      }
+    }
+  }, [selected?.id]);
+
+  // ─── WebSocket lifecycle ──────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!selected) return;
+    const token = getToken();
+    if (!token) { toast('Not authenticated', 'error'); return; }
+
+    const ws = new ChatWebSocket(selected.id, token, {
+      onConnected: () => setWsConnected(true),
+      onDisconnected: () => setWsConnected(false),
+
+      onMessage: (msg) => {
+        const own = isOwn(msg);
+        const normalized = { ...msg, isOwn: own };
+
+        setMessages(prev => {
+          // Replace optimistic temp message if it exists
+          if (own) {
+            const tempIdx = prev.findLastIndex(
+              m => m.id > 1_000_000_000_000 && m.content === msg.content
+            );
+            if (tempIdx !== -1) {
+              const next = [...prev];
+              next[tempIdx] = normalized;
+              return dedup(next);
+            }
+          }
+          if (prev.some(m => m.id === msg.id)) return prev;
+          return dedup([...prev, normalized]);
+        });
+
+        if (atBottom.current) {
+          setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+        }
+
+        // Refresh conversation list for last_message
+        loadConversations();
+      },
+
+      onHistory: (history) => {
+        const normalized = history.map(m => ({ ...m, isOwn: isOwn(m) }));
+        setMessages(prev => dedup([...prev, ...normalized]));
+        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 80);
+      },
+
+      onTyping: (senderId, isTyping) => {
+        setTypingUsers(prev => {
+          const next = new Set(prev);
+          isTyping ? next.add(senderId) : next.delete(senderId);
+          return next;
+        });
+      },
+
+      onUserStatus: (userId, status) => {
+        setConversations(prev => prev.map(c => {
+          if (c.room_type !== 'direct') return c;
+          const other = c.participants.find(p => Number(p.id) === userId);
+          return other ? { ...c, other_user_status: status } : c;
+        }));
+        if (selected.room_type === 'direct') {
+          const other = getOther(selected);
+          if (other && Number(other.id) === userId) {
+            setSelected(s => s ? { ...s, other_user_status: status } : s);
+          }
+        }
+      },
+
+      onDelivered: (messageId) => {
+        setMessages(prev =>
+          prev.map(m => m.id === messageId ? { ...m, is_delivered: true } : m)
+        );
+      },
+
+      onSeen: (messageId) => {
+        setMessages(prev =>
+          prev.map(m => m.id === messageId ? { ...m, is_read: true } : m)
+        );
+      },
+
+      onError: (detail) => toast(detail, 'error'),
+    });
+
+    ws.connect();
+    wsRef.current = ws;
 
     return () => {
-      wsService.current?.disconnect();
+      ws.disconnect();
+      wsRef.current = null;
+      setWsConnected(false);
     };
-  }, [selectedConversation, accessToken, scrollToBottom, user?.id]);
+  }, [selected?.id]);
 
-  // Mark messages as read when conversation is selected
+  // ─── Intersection observer for read receipts ──────────────────────────────
+
   useEffect(() => {
-    if (selectedConversation && selectedConversation.unread_count > 0) {
-      chatService.markAllAsRead(selectedConversation.id);
-    }
-  }, [selectedConversation]);
+    if (!msgContainerRef.current || !wsRef.current || !selected) return;
 
-  // Handle typing indicator
-  const handleTyping = useCallback(() => {
-    if (!wsService.current) return;
-
-    if (!isTyping) {
-      setIsTyping(true);
-      wsService.current.sendTyping(true);
-    }
-
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-
-    typingTimeoutRef.current = setTimeout(() => {
-      if (wsService.current && isTyping) {
-        wsService.current.sendTyping(false);
-        setIsTyping(false);
-      }
-    }, 1000);
-  }, [isTyping]);
-
-  // Function to start direct chat with mobile number without showing modal
-  const startDirectChatWithMobile = async (mobileNumber: string) => {
-    if (!mobileNumber.trim()) return;
-
-    try {
-      console.log('Starting direct chat with mobile number:', mobileNumber);
-
-      // Use the existing handleCreateDirectChat function with the mobile number
-      await handleCreateDirectChat(mobileNumber.trim());
-
-      // Remove the mobile parameter from URL to prevent re-triggering
-      const url = new URL(window.location.href);
-      url.searchParams.delete('mobile');
-      window.history.replaceState({}, '', url.toString());
-
-    } catch (error) {
-      console.error('Failed to start direct chat:', error);
-      setError(t('failedCreateChat'));
-      setTimeout(() => setError(null), 5000);
-    }
-  };
-
-  const loadConversations = async (tab?: string) => {
-    try {
-      // Don't set loading to true here to avoid flickering the list away
-      const data = await chatService.getConversations(tab);
-      setConversations(data);
-    } catch (error) {
-      console.error('Failed to load conversations:', error);
-      setError(t('failedLoadConversations'));
-    } finally {
-      if (loading) setLoading(false);
-    }
-  };
-
-  const loadMessages = async (conversationId: number) => {
-    try {
-      console.log('Loading messages for conversation:', conversationId);
-      const data = await chatService.getMessages(conversationId);
-      console.log('Messages loaded from API:', data.length, data);
-      setMessages(data);
-      // Mark messages as read when conversation is opened
-      await chatService.markAsRead(conversationId);
-
-      // Update local state to show read receipts for received messages immediately
-      setMessages(prev => prev.map(msg => ({
-        ...msg,
-        read_at: msg.read_at || new Date().toISOString()
-      })));
-    } catch (error) {
-      console.error('Failed to load messages:', error);
-      setError(t('failedLoadMessages'));
-    }
-  };
-
-  // Load messages when conversation is selected or changes
-  useEffect(() => {
-    if (selectedConversation) {
-      loadMessages(selectedConversation.id);
-    }
-  }, [selectedConversation]);
-
-  const handleEditMessage = async () => {
-    if (editingMessageId === null || !editMessageContent.trim() || !selectedConversation) return;
-    try {
-      await chatService.editMessage(editingMessageId, editMessageContent);
-      // Immediately refresh messages from server as requested
-      await loadMessages(selectedConversation.id);
-      setEditingMessageId(null);
-      setEditMessageContent('');
-      toast.success(t('messageUpdated'));
-    } catch (err) {
-      setError(t('failedUpdateName'));
-    }
-  };
-
-  // Handle file download with tracking
-  const handleDownload = async (attachmentId: number, fileName: string) => {
-    try {
-      await chatService.downloadAttachment(attachmentId, fileName);
-      // Mark file as downloaded
-      setDownloadedFiles(prev => new Set([...prev, attachmentId]));
-    } catch (error) {
-      console.error('Download failed:', error);
-    }
-  };
-
-  const handleDeleteMessage = async () => {
-    if (msgToDeleteId === null) return;
-    try {
-      await chatService.deleteMessage(msgToDeleteId);
-      setMessages(prev => prev.filter(m => m.id !== msgToDeleteId));
-      setMsgToDeleteId(null);
-      setShowMsgDeleteModal(false);
-      toast.success(t('messageDeleted'));
-    } catch (err) {
-      setError(t('failedDeleteMessage'));
-      toast.error(t('failedDeleteMessage'));
-    }
-  };
-
-  const handleExitGroup = async () => {
-    if (!selectedConversation) return;
-    setShowExitGroupModal(true);
-  };
-
-  const confirmExitGroup = async () => {
-    if (!selectedConversation) return;
-    try {
-      await chatService.exitGroup(selectedConversation.id);
-      toast.success(t('exitedGroup'));
-      loadConversations();
-      setSelectedConversation(null);
-      setShowExitGroupModal(false);
-      setShowChatOptions(false);
-    } catch (err) {
-      setError(t('failedExitGroup'));
-      toast.error(t('failedExitGroup'));
-    }
-  };
-
-  const handleAddMember = async () => {
-    if (!selectedConversation || !addMemberUserId.trim()) return;
-    try {
-      await chatService.addMemberToGroup(selectedConversation.id, addMemberUserId.trim());
-      toast.success(t('memberAdded'));
-      setAddMemberUserId('');
-      setAddMemberSearchText('');
-      setShowAddMemberModal(false);
-      // Refresh conversation to show new member list if needed
-      loadConversations();
-    } catch (err: any) {
-      console.error('Error adding member:', err);
-      if (err.response?.data?.detail === "User not found") {
-        toast.error(t('userNotFoundMobile'));
-      } else {
-        setError(t('failedAddMember'));
-        toast.error(t('failedAddMember'));
-      }
-    }
-  };
-
-  const handleRemoveMember = async (memberId: number) => {
-    if (!selectedConversation) return;
-    setRemovingMemberId(memberId);
-    try {
-      await api.post(`/api/chat/rooms/${selectedConversation.id}/remove-members/`, {
-        member_ids: [memberId]
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const id = Number(entry.target.getAttribute('data-msg-id'));
+        const msg = messages.find(m => m.id === id);
+        if (msg && !isOwn(msg) && !msg.is_read) {
+          wsRef.current?.sendRead(id);
+          setMessages(prev =>
+            prev.map(m => m.id === id ? { ...m, is_read: true } : m)
+          );
+        }
       });
-      toast.success(t('memberRemoved'));
-      // Refresh members list
-      fetchGroupMembers(selectedConversation.id);
-    } catch (err: any) {
-      console.error('Remove member error:', err);
-      setError(t('failedRemoveMember'));
-      toast.error(t('failedRemoveMember'));
-    } finally {
-      setRemovingMemberId(null);
+    }, { threshold: 0.6, root: msgContainerRef.current });
+
+    const els = msgContainerRef.current.querySelectorAll('[data-msg-id]');
+    els.forEach(el => observer.observe(el));
+
+    const mo = new MutationObserver(() => {
+      const newEls = msgContainerRef.current?.querySelectorAll('[data-msg-id]');
+      newEls?.forEach(el => observer.observe(el));
+    });
+    mo.observe(msgContainerRef.current, { childList: true, subtree: true });
+
+    return () => { observer.disconnect(); mo.disconnect(); };
+  }, [messages, selected?.id]);
+
+  // ─── Scroll tracking ──────────────────────────────────────────────────────
+
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    if (el.scrollTop < 80 && hasMore && !msgLoading) {
+      loadMessages(selected!.id, offset, false);
     }
+  }, [hasMore, msgLoading, offset, selected?.id]);
+
+  // ─── Typing indicator ─────────────────────────────────────────────────────
+
+  const handleInputChange = (val: string) => {
+    if (editId) { setEditContent(val); return; }
+    setInput(val);
+    if (!wsRef.current?.connected) return;
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+      wsRef.current.sendTyping(true);
+    }
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      wsRef.current?.sendTyping(false);
+      isTypingRef.current = false;
+    }, 1500);
   };
 
-  const fetchGroupMembers = async (roomId: number) => {
-    setFetchingMembers(true);
-    try {
-      // Hit the specific endpoint requested by user
-      const response = await api.get(`/api/chat/rooms/${roomId}/members/`);
-      const members = response.data.results || response.data;
-      setGroupMembers(Array.isArray(members) ? members : []);
-    } catch (err) {
-      setError(t('failedLoadMembers'));
-    } finally {
-      setFetchingMembers(false);
-    }
-  };
+  // ─── Send message ─────────────────────────────────────────────────────────
 
-  const handleSearchSuggestions = async (query: string) => {
-    if (!query || query.length < 2) {
-      setSearchSuggestions([]);
+  const handleSend = useCallback(async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!selected) return;
+
+    // Edit mode
+    if (editId) {
+      if (!editContent.trim()) return;
+      try {
+        const updated = await API.editMessage(editId, editContent.trim());
+        setMessages(prev => dedup(prev.map(m => m.id === editId ? { ...updated, isOwn: true } : m)));
+        toast(t('messageUpdated'), 'success');
+      } catch { toast(t('failedUpdateName'), 'error'); }
+      setEditId(null);
+      setEditContent('');
       return;
     }
 
-    setIsSearching(true);
-    try {
-      // Changed to the common mobile-search endpoint requested by user
-      const response = await api.get(`/api/auth/api/mobile-search/?q=${query}`);
-      const suggestions = response.data?.results || response.data?.suggestions || (Array.isArray(response.data) ? response.data : []);
+    const content = input.trim();
+    const hasFiles = files.length > 0;
+    if (!content && !hasFiles) return;
 
-      // Map to ensure field compatibility (label -> full_name)
-      const mapped = suggestions.map((item: any) => ({
-        ...item,
-        full_name: item.full_name || item.label || item.name || 'User',
-        mobile_number: item.mobile_number || item.value || ''
-      }));
+    // Clear reply/input immediately
+    const sentReply = replyTo;
+    const sentFiles = files;
+    setInput('');
+    setFiles([]);
+    setReplyTo(null);
+    if (fileRef.current) fileRef.current.value = '';
 
-      setSearchSuggestions(mapped);
-    } catch (err) {
-      console.error('Suggestion search error:', err);
-      setSearchSuggestions([]);
-    } finally {
-      setIsSearching(false);
-    }
-  };
+    // Optimistic message
+    const tempId = Date.now();
+    const optimistic: Message = {
+      id: tempId,
+      content,
+      sender_id: Number(currentUser?.id ?? 0),
+      sender_mobile: currentUser?.mobile_number ?? '',
+      created_at: new Date().toISOString(),
+      is_deleted: false,
+      is_edited: false,
+      edited_at: null,
+      attachments: [],
+      is_delivered: false,
+      is_read: false,
+      read_at: null,
+      delivered_at: null,
+      isOwn: true,
+    };
+    setMessages(prev => dedup([...prev, optimistic]));
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
 
-  const handleUpdateNickname = async () => {
-    if (!selectedConversation || !nicknameValue.trim()) return;
-    try {
-      const otherUser = selectedConversation.participants.find(p => p.id !== user?.id) || selectedConversation.participants[0];
-      if (!otherUser) return;
-      await chatService.updateContactNickname(otherUser.id, nicknameValue.trim());
-      toast.success(t('nicknameUpdated'));
-      setNicknameValue('');
-      setShowNicknameModal(false);
-
-      // Refresh nicknames and conversations
-      const updatedNicknames = await chatService.getNicknames();
-      const map: Record<number, string> = {};
-      if (Array.isArray(updatedNicknames)) {
-        updatedNicknames.forEach((item: any) => {
-          if (item.contact_id && item.nickname) map[item.contact_id] = item.nickname;
-        });
-      }
-      setNicknames(map);
-      loadConversations(activeTab);
-    } catch (err) {
-      setError(t('failedUpdateName'));
-      toast.error(t('failedUpdateName'));
-    }
-  };
-
-  const handleDeleteConversation = async () => {
-    if (!selectedConversation) return;
-    try {
-      await chatService.deleteConversation(selectedConversation.id);
-      
-      // Immediately call messages API to refresh/clear
-      await loadMessages(selectedConversation.id);
-      
-      // Call contacts API as requested
-      await loadConversations();
-      
-      setConversations(prev => prev.filter(c => c.id !== selectedConversation.id));
-      setSelectedConversation(null);
-      setShowChatOptions(false);
-      setShowClearChatModal(false);
-      toast.success(t('chatCleared'));
-    } catch (err) {
-      setError(t('failedClearChat'));
-      toast.error(t('failedClearChat'));
-    }
-  };
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!messageInput.trim() && selectedFiles.length === 0) return;
-    if (!selectedConversation) return;
-
-    const messageContent = messageInput.trim();
-    const files = selectedFiles;
-
-    setMessageInput('');
-    setSelectedFiles([]);
-    if (fileInputRef.current) fileInputRef.current.value = '';
     setSending(true);
-
     try {
-      // ✅ FIRST: WebSocket - only if no file
-      if (wsService.current && wsService.current.isConnected() && files.length === 0) {
-        wsService.current.sendMessage(messageContent);
+      if (!hasFiles && wsRef.current?.connected) {
+        // Send via WebSocket (faster)
+        wsRef.current.sendMessage(content);
+        // The WS will echo back; we replace temp then
       } else {
-        throw new Error('WS not connected or file present');
-      }
-    } catch (wsError) {
-      console.warn('WS failed or file present → using REST');
-
-      try {
-        // 🔁 Fallback REST
-        const sentMessage = await chatService.sendMessage({
-          conversation_id: selectedConversation.id,
-          content: messageContent,
-          files: files.length > 0 ? files : null
-        });
-
-        // Add message with delivered status if online
-        const isOnline = window.navigator.onLine;
-        const messageWithStatus = {
-          ...sentMessage,
-          delivered_at: isOnline ? new Date().toISOString() : null
-        };
-
-        setMessages((prev) => {
-          if (!prev.find((m) => m.id === sentMessage.id)) {
-            return [...prev, messageWithStatus];
+        // REST fallback (required for file uploads)
+        const sent = await API.sendMessage(selected.id, content, hasFiles ? sentFiles : undefined);
+        const normalized = { ...sent, isOwn: true };
+        setMessages(prev => {
+          const idx = prev.findIndex(m => m.id === tempId);
+          if (idx !== -1) {
+            const next = [...prev];
+            next[idx] = normalized;
+            return dedup(next);
           }
-          return prev;
+          return dedup([...prev.filter(m => m.id !== tempId), normalized]);
         });
-
-        // Refresh conversation list to update last message
         loadConversations();
-
-        // Immediately refresh messages from server after sending without marking as read
-        const freshMessages = await chatService.getMessages(selectedConversation.id);
-        setMessages(freshMessages);
-      } catch (restError) {
-        console.error('Both WS & REST failed');
-        setError('Failed to send message');
-        setTimeout(() => setError(null), 5000);
-        setMessageInput(messageContent);
-        setSelectedFiles(files);
       }
+    } catch (err: any) {
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setInput(content);
+      setFiles(sentFiles);
+      toast(err.message ?? t('failedAddMember'), 'error');
     } finally {
       setSending(false);
     }
-  };
+  }, [selected, editId, editContent, input, files, replyTo, currentUser]);
 
-  const handleCreateDirectChat = async (identifierOverride?: string) => {
-    const inputValue = (identifierOverride || newChatUserId).trim();
-    if (!inputValue) {
-      setError(t('pleaseEnterMobile'));
-      setTimeout(() => setError(null), 5000);
-      return;
-    }
+  // ─── Delete message ───────────────────────────────────────────────────────
 
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
     try {
-      console.log('Creating chat with identifier:', inputValue);
+      await API.deleteMessage(deleteTarget);
+      setMessages(prev => prev.filter(m => m.id !== deleteTarget));
+      toast(t('messageDeleted'), 'success');
+    } catch { toast(t('failedDeleteMessage'), 'error'); }
+    setDeleteTarget(null);
+    setModal('none');
+  }, [deleteTarget]);
 
-      // First, try to search by mobile number if it's numeric
-      let finalIdentifier = inputValue;
+  // ─── Block / unblock ──────────────────────────────────────────────────────
 
-      if (/^\d+$/.test(inputValue)) {
-        try {
-          console.log('Searching by mobile number:', inputValue);
-          // Changed to the common mobile-search endpoint as requested
-          const searchResponse = await api.get(`/api/auth/api/mobile-search/?q=${inputValue}`);
-          const suggestions = searchResponse.data?.results || searchResponse.data?.suggestions || (Array.isArray(searchResponse.data) ? searchResponse.data : []);
-
-          if (suggestions.length > 0) {
-            const matchedUser = suggestions[0];
-            console.log('Found user by mobile:', matchedUser);
-            finalIdentifier = matchedUser.id.toString();
-            console.log('Using user ID from search:', finalIdentifier);
-          }
-        } catch (searchError) {
-          console.log('Search failed, trying with original identifier:', searchError);
-        }
+  const toggleBlock = useCallback(async () => {
+    if (!selected || selected.room_type !== 'direct') return;
+    const other = getOther(selected);
+    if (!other) return;
+    try {
+      if (blockStatus?.i_blocked_them) {
+        await API.unblockUser(other.id);
+        setBlockStatus(s => s ? { ...s, i_blocked_them: false, chat_allowed: true } : s);
+        toast(t('unblockedSuccess'), 'success');
+      } else {
+        await API.blockUser(other.id);
+        setBlockStatus(s => s ? { ...s, i_blocked_them: true, chat_allowed: false } : s);
+        toast(t('blockedSuccess'), 'success');
       }
+      API.getBlocked().then(setBlockedList).catch(() => { });
+    } catch { toast('Failed', 'error'); }
+  }, [selected, blockStatus, getOther]);
 
-      const conversation = await chatService.createDirectConversation(finalIdentifier);
-      console.log('Conversation created:', conversation);
+  // ─── Clear chat ───────────────────────────────────────────────────────────
 
-      setConversations(prev => [conversation, ...prev]);
-      setSelectedConversation(conversation);
-      setShowNewChatModal(false);
-      setNewChatUserId('');
-      setError(null);
+  const confirmClear = useCallback(async () => {
+    if (!selected) return;
+    try {
+      await API.clearChat(selected.id);
+      setMessages([]);
+      setModal('none');
+      toast(t('chatCleared'), 'success');
+    } catch { toast(t('failedClearChat'), 'error'); }
+  }, [selected]);
+
+  // ─── Exit group ───────────────────────────────────────────────────────────
+
+  const confirmExit = useCallback(async () => {
+    if (!selected) return;
+    try {
+      await API.exitGroup(selected.id);
+      setSelected(null);
+      setConversations(prev => prev.filter(c => c.id !== selected.id));
+      setModal('none');
+      toast(t('exitedGroup'), 'success');
+    } catch { toast(t('failedExitGroup'), 'error'); }
+  }, [selected]);
+
+  // ─── Group members ────────────────────────────────────────────────────────
+
+  const openGroupMembers = useCallback(async () => {
+    if (!selected) return;
+    setModal('group-members');
+    setMembersLoading(true);
+    try {
+      const members = await API.getGroupMembers(selected.id);
+      setGroupMembers(members);
+    } catch { toast(t('failedLoadConnected'), 'error'); }
+    finally { setMembersLoading(false); }
+  }, [selected]);
+
+  const removeMember = useCallback(async (userId: number) => {
+    if (!selected) return;
+    try {
+      await API.removeMembers(selected.id, [userId]);
+      setGroupMembers(prev => prev.filter(m => m.user_id !== userId));
+      toast(t('memberAdded'), 'success');
     } catch (error: any) {
-      console.error('Failed to create chat:', error);
-      setError(t('failedCreateChat'));
-      setTimeout(() => setError(null), 5000);
+      // Show the actual error message from the server
+      const errorMessage = error?.detail || t('failedExitGroup');
+      toast(errorMessage, 'error');
     }
-  };
+  }, [selected]);
 
-  const handleCreateGroupChat = async () => {
-    if (!newGroupName.trim() || !newGroupMembers.trim()) {
-      setError('Please provide a group name and a list of member IDs/Numbers');
-      setTimeout(() => setError(null), 5000);
-      return;
-    }
-
+  const addMember = useCallback(async () => {
+    if (!selected) return;
+    const idStr = addMemberId || addMemberInput;
+    const id = parseInt(idStr, 10);
+    if (isNaN(id)) { toast(t('userNotFoundMobile'), 'error'); return; }
     try {
-      const memberArray = newGroupMembers.split(',').map(m => m.trim()).filter(Boolean);
-
-      // Convert mobile numbers to user IDs
-      const groupMembersList = [];
-      for (const member of memberArray) {
-        if (/^\d+$/.test(member)) {
-          // This is a mobile number, search for user ID
-          try {
-            const searchResponse = await api.get(`/api/auth/api/mobile-search/?q=${member}`);
-            const suggestions = searchResponse.data?.results || searchResponse.data?.suggestions || (Array.isArray(searchResponse.data) ? searchResponse.data : []);
-
-            if (suggestions.length > 0) {
-              const matchedUser = suggestions[0];
-              groupMembersList.push(matchedUser.id);
-            } else {
-              throw new Error(`User not found for mobile number: ${member}`);
-            }
-          } catch (searchError) {
-            throw new Error(`Failed to find user for mobile number: ${member}`);
-          }
-        } else {
-          // This is already a user ID, convert to number
-          const userId = parseInt(member);
-          if (!isNaN(userId)) {
-            groupMembersList.push(userId);
-          } else {
-            throw new Error(`Invalid member format: ${member}`);
-          }
-        }
+      await API.addMembers(selected.id, [id]);
+      setAddMemberInput('');
+      setAddMemberId('');
+      setModal('none');
+      // Check if the added user is the current user
+      if (id === Number(currentUser?.id)) {
+        toast(t('memberAdded'), 'success');
+      } else {
+        toast(t('memberAdded'), 'success');
       }
+    } catch (e: any) {
+      toast(e.message ?? t('failedAddMember'), 'error');
+    }
+  }, [selected, addMemberInput, addMemberId, currentUser]);
 
-      const conversation = await chatService.createGroupConversation(newGroupName, groupMembersList);
-      setConversations(prev => [conversation, ...prev]);
-      setSelectedConversation(conversation);
-      setShowNewChatModal(false);
+  // ─── New chat ─────────────────────────────────────────────────────────────
+
+  const handleNewDirect = useCallback(async () => {
+    const inp = newChatInput.trim();
+    if (!inp) return;
+    let userId: number | null = null;
+    const suggestions = await API.mobileSearch(inp);
+    if (suggestions.length > 0) userId = suggestions[0].id;
+    else userId = parseInt(inp, 10);
+    if (!userId || isNaN(userId)) { toast(t('userNotFoundMobile'), 'error'); return; }
+    try {
+      const conv = await API.createDirect(userId);
+      setConversations(prev =>
+        prev.some(c => c.id === conv.id) ? prev : [conv, ...prev]
+      );
+      setSelected(conv);
+      setModal('none');
+      setNewChatInput('');
+      setSearchSuggestions([]);
+    } catch { toast(t('failedCreateChat'), 'error'); }
+  }, [newChatInput]);
+
+  const handleNewGroup = useCallback(async () => {
+    const name = newGroupName.trim();
+    if (!name || !newGroupMembers.trim()) {
+      toast('Group name and members required', 'error'); return;
+    }
+    const parts = newGroupMembers.split(',').map(s => s.trim()).filter(Boolean);
+    const ids: number[] = [];
+    for (const p of parts) {
+      const suggestions = await API.mobileSearch(p);
+      if (suggestions.length > 0) ids.push(suggestions[0].id);
+      else {
+        const n = parseInt(p, 10);
+        if (!isNaN(n)) ids.push(n);
+        else { toast(`Invalid member: ${p}`, 'error'); return; }
+      }
+    }
+    try {
+      const conv = await API.createGroup(name, ids);
+      setConversations(prev =>
+        prev.some(c => c.id === conv.id) ? prev : [conv, ...prev]
+      );
+      setSelected(conv);
+      setModal('none');
       setNewGroupName('');
       setNewGroupMembers('');
-      setIsGroupChat(false);
-      setError(null);
-    } catch (error: any) {
-      console.error('Failed to create group:', error);
-      setError(error.message || t('groupCreateError'));
-      setTimeout(() => setError(null), 5000);
-    }
-  };
+    } catch { toast('Failed to create group', 'error'); }
+  }, [newGroupName, newGroupMembers]);
 
-  const loadBlockedUsers = async () => {
+  const handleNickname = useCallback(async () => {
+    if (!selected) return;
+    const other = getOther(selected);
+    if (!other || !nicknameInput.trim()) return;
     try {
-      const users = await chatService.getBlockedUsers();
-      setBlockedUsers(users);
-      setShowBlockedUsersModal(true);
-    } catch (err) {
-      setError('Failed to load blocked users');
-      setTimeout(() => setError(null), 5000);
-    }
-  };
+      await API.setNickname(other.id, nicknameInput.trim());
+      setNicknames(prev => ({ ...prev, [other.id]: nicknameInput.trim() }));
+      setModal('none');
+      setNicknameInput('');
+      toast('Nickname saved', 'success');
+    } catch { toast('Failed to save nickname', 'error'); }
+  }, [selected, nicknameInput, getOther]);
 
-  const handleToggleBlock = async () => {
-    if (!selectedConversation || selectedConversation.room_type !== 'direct') return;
+  // ─── Search suggestions ───────────────────────────────────────────────────
 
-    const participants = selectedConversation.participants || [];
-    const localStorageUser = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null;
-    const currentUserMobile = localStorageUser?.mobile_number;
-    const currentUserId = Number(user?.id || localStorageUser?.id || localStorageUser?.user_id || localStorageUser?.pk);
+  const handleSearch = useCallback(async (q: string) => {
+    if (!q || q.length < 2) { setSearchSuggestions([]); return; }
+    const results = await API.mobileSearch(q);
+    setSearchSuggestions(results);
+  }, []);
 
-    const normalizePhone = (p: string | undefined | null) => p ? p.replace(/\D/g, '').slice(-10) : '';
-    const myMobile = normalizePhone(currentUserMobile);
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────
 
-    const targetParticipant = participants.find(p => {
-      const pId = Number(p.id);
-      const pMobile = normalizePhone(p.mobile_number);
-      const isMe = (pId !== 0 && pId === currentUserId) || (myMobile !== '' && pMobile === myMobile);
-      return !isMe;
-    }) || (participants.length > 1 ? participants[1] : participants[0]);
-
-    if (!targetParticipant) return;
-
-    try {
-      if (isBlockedByMe) {
-        await chatService.unblockUser(targetParticipant.id);
-        setIsBlockedByMe(false);
-      } else {
-        await chatService.blockUser(targetParticipant.id);
-        setIsBlockedByMe(true);
-      }
-
-      // Refresh blocked users list after block/unblock action
-      chatService.getBlockedUsers().then(setBlockedUsers).catch(console.error);
-
-      setShowChatOptions(false);
-    } catch (err) {
-      setError('Failed to update block status');
-      setTimeout(() => setError(null), 5000);
-    }
-  };
-
-  const handleUnblockFromList = async (userId: number) => {
-    try {
-      await chatService.unblockUser(userId);
-      setBlockedUsers(prev => prev.filter(u => u.user_id !== userId && u.blocked_user !== userId));
-
-      if (selectedConversation && selectedConversation.room_type === 'direct') {
-        const target = selectedConversation.participants.find(p => p.id !== user?.id);
-        if (target && target.id === userId) {
-          setIsBlockedByMe(false);
-        }
-      }
-    } catch (err) {
-      setError('Failed to unblock user');
-      setTimeout(() => setError(null), 5000);
-    }
-  };
-
-  const filteredConversations = conversations.filter(conv => {
-    // 1. Tab Filter
-    const roomType = (conv.room_type || '').toLowerCase();
-
-    if (activeTab === 'direct') {
-      if (roomType !== 'direct') return false;
-    } else if (activeTab === 'group') {
-      if (roomType !== 'group') return false;
-    }
-    // If 'all', proceed to search filter
-
-    // 2. Search Filter (if query exists)
-    if (!searchQuery.trim()) return true;
-
-    const query = searchQuery.toLowerCase();
-    if (roomType === 'group') {
-      return conv.name?.toLowerCase().includes(query);
-    } else {
-      const other = conv.participants.find(p => Number(p.id) !== Number(user?.id)) || conv.participants[0];
-      return other?.mobile_number?.includes(query) ||
-        other?.name?.toLowerCase().includes(query) ||
-        other?.mobile_number?.toLowerCase().includes(query);
-    }
-  });
-
-  if (loading && conversations.length === 0) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-12 w-12 text-orange-600 animate-spin" />
-      </div>
-    );
-  }
+  const canChat = !blockStatus || blockStatus.chat_allowed;
 
   return (
-    <div className="flex bg-orange-50 h-[calc(100dvh-80px)] md:h-[calc(100dvh-130px)] overflow-hidden relative border-t border-orange-100">
+    <>
+      {/* Global styles */}
+      <style>{`
+        :root {
+          --bg-primary: #fffcfc;
+          --bg-secondary: #ffffff;
+          --bg-sidebar: #fffbfb;
+          --bg-surface: #ffffff;
+          --bg-hover: #fef2f2;
+          --bg-active: #fee2e2;
+          --border: #fecaca;
+          --border-light: #fee2e2;
+          --accent: #D60606;
+          --accent-dim: rgba(214, 6, 6, 0.08);
+          --accent-gradient: linear-gradient(135deg, #D60606 0%, #8b0000 100%);
+          --text-primary: #1f0404;
+          --text-secondary: #450a0a;
+          --text-muted: #991b1b;
+          --bubble-own: #D60606;
+          --bubble-own-border: rgba(214, 6, 6, 0.1);
+          --bubble-other: #ffffff;
+          --bubble-other-border: #fecaca;
+          --online: #22c55e;
+          --font-display: 'DM Serif Display', Georgia, serif;
+          --font-body: 'DM Sans', system-ui, sans-serif;
+          --radius: 14px;
+          --radius-lg: 24px;
+          --shadow: 0 10px 40px rgba(214, 6, 6, 0.05);
+        }
+        @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-      {/* Error Toast */}
-      {
-        error && (
-          <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg">
-            {error}
-          </div>
-        )
-      }
+        .chat-root {
+          display: flex;
+          height: calc(100dvh - 120px);
+          background: var(--bg-primary);
+          overflow: hidden;
+          font-family: var(--font-body);
+          color: var(--text-primary);
+        }
 
-      {/* Sidebar */}
-      <div className={`w-full md:w-1/3  bg-white border-r h-full flex flex-col overflow-hidden shrink-0 ${selectedConversation ? 'hidden md:flex' : 'flex'}`}>
-        {/* Sidebar Header & Search - Fixed at top */}
-        <div className="sticky top-0 z-40 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 shadow-md shrink-0">
-          <div className="p-4 flex justify-between items-center">
-            <h2 className="text-xl font-bold text-white tracking-tight">{t('chat')}</h2>
-          </div>
-          <div className="p-4 pt-0">
-            <div className="relative group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-orange-200 group-focus-within:text-white transition-colors" />
+        @media (max-width: 768px) {
+          .chat-root {
+            height: calc(100dvh - 84px);
+          }
+        }
+
+        /* Sidebar */
+        .sidebar {
+          width: 380px;
+          flex-shrink: 0;
+          display: flex;
+          flex-direction: column;
+          border-right: 1px solid var(--border);
+          background: var(--bg-sidebar);
+          transition: transform 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+          position: relative;
+          z-index: 10;
+        }
+        .sidebar-header {
+          padding: 28px 24px 0;
+          background: var(--bg-sidebar);
+          position: relative;
+        }
+        .sidebar-header::before {
+          content: '';
+          position: absolute; inset: 0;
+          background-image: radial-gradient(var(--accent-dim) 1.5px, transparent 1.5px);
+          background-size: 32px 32px;
+          opacity: 0.2;
+          pointer-events: none;
+        }
+        .sidebar-title {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 24px;
+          position: relative;
+          z-index: 1;
+        }
+        .sidebar-title h1 {
+          font-family: var(--font-display);
+          font-size: 28px;
+          color: var(--text-primary);
+          margin: 0;
+          background: var(--accent-gradient);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          font-weight: 700;
+        }
+        .btn-icon {
+          width: 38px; height: 38px;
+          border-radius: 12px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .btn-icon:hover {
+          background: var(--accent-gradient);
+          color: #fff;
+          border-color: transparent;
+          box-shadow: 0 4px 12px rgba(180, 83, 9, 0.2);
+        }
+        .search-bar {
+          position: relative;
+          margin-bottom: 20px;
+        }
+        .search-bar input {
+          width: 100%;
+          padding: 12px 14px 12px 42px;
+          background: var(--bg-primary);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          color: var(--text-primary);
+          font-size: 14px;
+          font-family: var(--font-body);
+          outline: none;
+          transition: all 0.2s;
+        }
+        .search-bar input:focus { 
+          border-color: var(--accent);
+          background: var(--bg-secondary);
+          box-shadow: 0 0 0 4px var(--accent-dim);
+        }
+        .search-bar input::placeholder { color: var(--text-muted); }
+        .search-icon {
+          position: absolute; left: 14px; top: 50%;
+          transform: translateY(-50%);
+          color: var(--text-muted);
+          pointer-events: none;
+        }
+        .tabs {
+          display: flex;
+          border-bottom: 1px solid var(--border);
+          padding: 0 8px;
+          gap: 32px;
+        }
+        .tab-btn {
+          padding: 12px 4px;
+          background: none;
+          border: none;
+          border-bottom: 2px solid transparent;
+          color: var(--text-muted);
+          font-size: 13px;
+          font-weight: 600;
+          font-family: var(--font-body);
+          cursor: pointer;
+          transition: all 0.2s;
+          position: relative;
+        }
+        .tab-btn.active {
+          color: var(--accent);
+          border-bottom-color: var(--accent);
+        }
+        .conv-list {
+          flex: 1;
+          overflow-y: auto;
+          background: var(--bg-secondary);
+        }
+        .conv-item {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          padding: 18px 24px;
+          border-bottom: 1px solid var(--border-light);
+          cursor: pointer;
+          transition: all 0.2s ease;
+          background: transparent;
+          border-left: 4px solid transparent;
+          width: 100%;
+          text-align: left;
+        }
+        .conv-item:hover { background: rgba(254, 243, 199, 0.4); }
+        .conv-item.active { 
+          background: var(--bg-active); 
+          border-left-color: var(--accent);
+        }
+        .conv-info { flex: 1; min-width: 0; }
+        .conv-name {
+          font-weight: 700;
+          font-size: 15px;
+          color: var(--text-primary);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .conv-last {
+          font-size: 13px;
+          color: var(--text-muted);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          margin-top: 4px;
+        }
+        .unread-badge {
+          background: var(--accent-gradient);
+          color: #fff;
+          font-size: 11px;
+          font-weight: 700;
+          padding: 2px 8px;
+          border-radius: 20px;
+          flex-shrink: 0;
+          box-shadow: 0 2px 6px rgba(180, 83, 9, 0.3);
+        }
+        .sidebar-footer {
+          padding: 20px;
+          border-top: 1px solid var(--border);
+          display: flex;
+          gap: 10px;
+          background: var(--bg-secondary);
+        }
+        .btn-primary {
+          flex: 1;
+          padding: 12px 16px;
+          background: var(--accent-gradient);
+          color: #fff;
+          border: none;
+          border-radius: 12px;
+          font-weight: 600;
+          font-size: 14px;
+          font-family: var(--font-body);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: all 0.2s;
+          box-shadow: 0 4px 12px rgba(180, 83, 9, 0.2);
+        }
+        .btn-primary:hover { 
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(180, 83, 9, 0.3);
+        }
+        .btn-secondary {
+          padding: 12px 16px;
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          font-family: var(--font-body);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          transition: all 0.2s;
+          font-size: 14px;
+          font-weight: 600;
+        }
+        .btn-secondary:hover {
+          background: var(--bg-hover);
+          border-color: var(--accent);
+          color: var(--accent);
+        }
+
+        /* Chat area */
+        .chat-area {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          background: var(--bg-primary);
+          min-width: 0;
+          position: relative;
+        }
+        .chat-header {
+          padding: 16px 20px;
+          background: var(--bg-secondary);
+          border-bottom: 1px solid var(--border);
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          flex-shrink: 0;
+          z-index: 5;
+          box-shadow: 0 1px 3px rgba(67, 20, 7, 0.05);
+        }
+        .chat-header-info { flex: 1; min-width: 0; }
+        .chat-header-name {
+          font-weight: 700;
+          font-size: 16px;
+          color: var(--text-primary);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .chat-header-status {
+          font-size: 12px;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          margin-top: 2px;
+        }
+        .status-dot {
+          width: 7px; height: 7px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+        .status-dot.online { background: var(--online); }
+        .status-dot.offline { background: var(--text-muted); }
+
+        /* Messages */
+        .messages-area {
+          flex: 1;
+          overflow-y: auto;
+          padding: 24px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          background-color: #fcf8f3;
+          background-image: 
+            radial-gradient(#eaddca 1px, transparent 1px),
+            radial-gradient(#eaddca 1px, #fcf8f3 1px);
+          background-size: 40px 40px;
+          background-position: 0 0, 20px 20px;
+        }
+        .date-divider {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin: 24px 0 16px;
+          color: var(--text-muted);
+          font-size: 12px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+        .date-divider::before, .date-divider::after {
+          content: '';
+          flex: 1;
+          height: 1px;
+          background: var(--border);
+          opacity: 0.5;
+        }
+        .msg-row {
+          display: flex;
+          align-items: flex-end;
+          gap: 10px;
+          padding: 4px 0;
+        }
+        .msg-row.own { flex-direction: row-reverse; }
+        .msg-bubble {
+          max-width: min(75%, 600px);
+          padding: 12px 16px;
+          border-radius: 18px;
+          position: relative;
+          word-break: break-word;
+          line-height: 1.6;
+          font-size: 14.5px;
+          cursor: default;
+          box-shadow: 0 2px 8px rgba(67, 20, 7, 0.05);
+        }
+        .msg-bubble.own {
+          background: #fff5f5;
+          border: 1px solid var(--border);
+          border-bottom-right-radius: 4px;
+          color: var(--text-primary);
+        }
+        .msg-bubble.other {
+          background: #ffffff;
+          border: 1px solid var(--border-light);
+          border-bottom-left-radius: 4px;
+          color: var(--text-primary);
+        }
+        .msg-sender-name {
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--accent);
+          margin-bottom: 2px;
+        }
+        .msg-meta {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          justify-content: flex-end;
+          margin-top: 4px;
+          opacity: 0.9;
+        }
+        .msg-time {
+          font-size: 11px;
+          font-family: var(--font-mono);
+          color: var(--text-muted);
+        }
+        .msg-edited {
+          font-size: 10px;
+          color: var(--text-muted);
+          font-style: italic;
+          margin-right: 4px;
+        }
+        .msg-deleted {
+          font-style: italic;
+          color: var(--text-muted);
+          font-size: 13px;
+        }
+
+        /* Message options */
+        .msg-options-btn {
+          position: absolute;
+          top: 6px; right: 6px;
+          opacity: 0;
+          transition: opacity 0.15s;
+          background: rgba(214, 6, 6, 0.08);
+          border: none;
+          border-radius: 6px;
+          padding: 3px 5px;
+          cursor: pointer;
+          color: var(--accent);
+          display: flex; align-items: center;
+        }
+        .msg-bubble:hover .msg-options-btn { opacity: 1; }
+        .msg-options-menu {
+          position: absolute;
+          top: 26px; right: 0;
+          z-index: 100;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          box-shadow: var(--shadow);
+          overflow: hidden;
+          min-width: 150px;
+        }
+        .msg-option-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 9px 14px;
+          font-size: 13px;
+          font-family: var(--font-body);
+          color: var(--text-secondary);
+          background: none;
+          border: none;
+          width: 100%;
+          text-align: left;
+          cursor: pointer;
+          transition: all 0.1s;
+        }
+        .msg-option-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .msg-option-item.danger { color: #ef4444; }
+        .msg-option-item.danger:hover { background: rgba(239,68,68,0.1); }
+
+        /* Attachment */
+        .attachment-chip {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 10px;
+          background: rgba(255,255,255,0.07);
+          border-radius: 8px;
+          margin-top: 6px;
+          cursor: pointer;
+          font-size: 12px;
+          transition: background 0.15s;
+        }
+        .attachment-chip:hover { background: rgba(255,255,255,0.12); }
+
+        /* Typing indicator */
+        .typing-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 4px 0;
+          color: var(--text-muted);
+          font-size: 12px;
+        }
+        .typing-dots span {
+          display: inline-block;
+          width: 6px; height: 6px;
+          background: var(--text-muted);
+          border-radius: 50%;
+          animation: bounce 1.2s infinite;
+          margin-right: 3px;
+        }
+        .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce {
+          0%, 80%, 100% { transform: translateY(0); }
+          40% { transform: translateY(-5px); }
+        }
+
+        /* Input bar */
+        .input-bar {
+          padding: 16px 24px 24px;
+          background: var(--bg-secondary);
+          border-top: 1px solid var(--border);
+          flex-shrink: 0;
+        }
+        .reply-preview, .edit-preview {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 8px 12px;
+          border-radius: 8px;
+          margin-bottom: 10px;
+          font-size: 12px;
+        }
+        .reply-preview {
+          background: rgba(233,69,96,0.1);
+          border-left: 3px solid var(--accent);
+        }
+        .edit-preview {
+          background: rgba(59,130,246,0.1);
+          border-left: 3px solid #3b82f6;
+        }
+        .preview-label {
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-bottom: 2px;
+        }
+        .reply-preview .preview-label { color: var(--accent); }
+        .edit-preview .preview-label { color: #3b82f6; }
+        .preview-text {
+          color: var(--text-secondary);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          flex: 1;
+        }
+        .file-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-bottom: 10px;
+        }
+        .file-chip {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 5px 10px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 20px;
+          font-size: 12px;
+          color: var(--text-secondary);
+        }
+        .file-chip button {
+          background: none; border: none;
+          color: var(--text-muted);
+          cursor: pointer;
+          padding: 0;
+          font-size: 14px;
+          line-height: 1;
+          display: flex;
+        }
+        .input-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          background: var(--bg-primary);
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          padding: 8px 8px 8px 16px;
+          transition: all 0.2s;
+        }
+        .input-row:focus-within { 
+          border-color: var(--accent);
+          background: var(--bg-secondary);
+          box-shadow: 0 0 0 4px var(--accent-dim);
+        }
+        .input-field {
+          flex: 1;
+          background: none;
+          border: none;
+          outline: none;
+          color: var(--text-primary);
+          font-size: 15px;
+          font-family: var(--font-body);
+          padding: 8px 0;
+          resize: none;
+          line-height: 1.5;
+        }
+        .input-field::placeholder { color: var(--text-muted); }
+        .send-btn {
+          width: 42px; height: 42px;
+          border-radius: 12px;
+          background: var(--accent-gradient);
+          border: none;
+          color: #fff;
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer;
+          flex-shrink: 0;
+          transition: all 0.2s;
+          box-shadow: 0 4px 10px rgba(180, 83, 9, 0.25);
+        }
+        .send-btn:hover { 
+          transform: scale(1.05);
+          box-shadow: 0 6px 14px rgba(180, 83, 9, 0.35);
+        }
+        .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+        /* Blocked banner */
+        .blocked-banner {
+          padding: 16px;
+          background: rgba(239,68,68,0.08);
+          border-top: 1px solid rgba(239,68,68,0.2);
+          text-align: center;
+          color: #ef4444;
+          font-size: 13px;
+          font-weight: 500;
+        }
+
+        /* Empty states */
+        .empty-state {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          color: var(--text-muted);
+        }
+        .empty-icon {
+          width: 80px; height: 80px;
+          border-radius: 20px;
+          background: var(--bg-surface);
+          display: flex; align-items: center; justify-content: center;
+          margin-bottom: 4px;
+        }
+
+        /* Header menu */
+        .header-menu {
+          position: absolute;
+          right: 0; top: calc(100% + 8px);
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          box-shadow: var(--shadow);
+          overflow: hidden;
+          min-width: 180px;
+          z-index: 100;
+        }
+        .header-menu-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 16px;
+          font-size: 13px;
+          font-family: var(--font-body);
+          color: var(--text-secondary);
+          background: none;
+          border: none;
+          width: 100%;
+          text-align: left;
+          cursor: pointer;
+          transition: all 0.1s;
+        }
+        .header-menu-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .header-menu-item.danger { color: #ef4444; }
+        .header-menu-item.danger:hover { background: rgba(239,68,68,0.1); }
+        .header-menu-sep { height: 1px; background: var(--border-light); }
+
+        /* Modal */
+        .modal-overlay {
+          position: fixed; inset: 0;
+          background: rgba(0,0,0,0.75);
+          backdrop-filter: blur(4px);
+          display: flex; align-items: center; justify-content: center;
+          z-index: 1000;
+          padding: 16px;
+        }
+        .modal-card {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
+          padding: 24px;
+          width: 100%;
+          max-width: 420px;
+          box-shadow: var(--shadow);
+          animation: modalIn 0.18s ease;
+        }
+        @keyframes modalIn {
+          from { opacity: 0; transform: scale(0.95) translateY(8px); }
+          to { opacity: 1; transform: none; }
+        }
+        .modal-title {
+          font-size: 18px;
+          font-weight: 700;
+          color: var(--text-primary);
+          margin-bottom: 16px;
+          font-family: var(--font-display);
+        }
+        .modal-input {
+          width: 100%;
+          padding: 10px 14px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          color: var(--text-primary);
+          font-size: 14px;
+          font-family: var(--font-body);
+          outline: none;
+          margin-bottom: 12px;
+          transition: border-color 0.15s;
+        }
+        .modal-input:focus { border-color: var(--accent); }
+        .modal-input::placeholder { color: var(--text-muted); }
+        .modal-actions {
+          display: flex;
+          gap: 10px;
+          margin-top: 16px;
+        }
+        .btn-outline {
+          flex: 1;
+          padding: 10px;
+          background: none;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          color: var(--text-secondary);
+          font-family: var(--font-body);
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .btn-outline:hover { border-color: var(--text-secondary); color: var(--text-primary); }
+        .btn-danger {
+          flex: 1;
+          padding: 10px;
+          background: #ef4444;
+          border: none;
+          border-radius: 10px;
+          color: #fff;
+          font-family: var(--font-body);
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: opacity 0.15s;
+        }
+        .btn-danger:hover { opacity: 0.85; }
+
+        /* Suggestions dropdown */
+        .suggestions-list {
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          margin-top: -8px;
+          margin-bottom: 12px;
+          overflow: hidden;
+          box-shadow: var(--shadow);
+        }
+        .suggestion-item {
+          padding: 10px 14px;
+          cursor: pointer;
+          border-bottom: 1px solid var(--border-light);
+          transition: background 0.1s;
+        }
+        .suggestion-item:last-child { border-bottom: none; }
+        .suggestion-item:hover { background: var(--bg-hover); }
+        .sug-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+        .sug-mobile { font-size: 12px; color: var(--text-muted); }
+
+        /* Group member row */
+        .member-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 14px;
+          border-radius: 10px;
+          transition: background 0.1s;
+        }
+        .member-row:hover { background: var(--bg-hover); }
+        .member-role-badge {
+          font-size: 10px;
+          font-weight: 700;
+          padding: 2px 7px;
+          border-radius: 20px;
+          letter-spacing: 0.5px;
+          text-transform: uppercase;
+        }
+        .member-role-badge.admin {
+          background: rgba(233,69,96,0.15);
+          color: var(--accent);
+        }
+        .member-role-badge.member {
+          background: var(--bg-hover);
+          color: var(--text-muted);
+        }
+
+        /* WS status */
+        .ws-indicator {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 11px;
+          font-weight: 500;
+        }
+        .ws-dot {
+          width: 6px; height: 6px;
+          border-radius: 50%;
+        }
+        .ws-dot.connected { background: var(--online); animation: pulse 2s infinite; }
+        .ws-dot.disconnected { background: #ef4444; }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+        }
+
+        /* Toast */
+        .toasts {
+          position: fixed;
+          bottom: 24px; right: 24px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          z-index: 9999;
+        }
+        .toast-item {
+          padding: 10px 16px;
+          border-radius: 10px;
+          font-size: 13px;
+          font-weight: 500;
+          font-family: var(--font-body);
+          animation: toastIn 0.2s ease;
+          box-shadow: var(--shadow);
+          max-width: 300px;
+        }
+        .toast-item.success { background: #166534; color: #bbf7d0; border: 1px solid #166534; }
+        .toast-item.error { background: #7f1d1d; color: #fecaca; border: 1px solid #7f1d1d; }
+        .toast-item.info { background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); }
+        @keyframes toastIn {
+          from { opacity: 0; transform: translateX(20px); }
+          to { opacity: 1; transform: none; }
+        }
+
+        /* Load more */
+        .load-more-btn {
+          align-self: center;
+          padding: 6px 16px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 20px;
+          color: var(--text-muted);
+          font-size: 12px;
+          font-family: var(--font-body);
+          cursor: pointer;
+          transition: all 0.15s;
+          margin-bottom: 8px;
+        }
+        .load-more-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* Mobile */
+        @media (max-width: 768px) {
+          .chat-root { height: calc(100dvh - 80px); }
+          .sidebar { width: 100%; position: absolute; top: 0; left: 0; bottom: 0; }
+          .sidebar.hidden { transform: translateX(-100%); }
+          .chat-area { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+          .chat-area.hidden { display: none; }
+          .back-btn { display: flex !important; }
+        }
+        .back-btn { display: none; }
+        .blocked-list-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 0;
+          border-bottom: 1px solid var(--border-light);
+        }
+        .blocked-mobile { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+      `}</style>
+
+      <div className="chat-root" onClick={() => { setOptionsFor(null); }}>
+
+        {/* ── SIDEBAR ──────────────────────────────────────────────────────── */}
+        <div className={`sidebar ${selected ? 'hidden' : ''}`} style={{ display: 'flex', flexDirection: 'column' }}>
+          <div className="sidebar-header">
+            <div className="sidebar-title">
+              <h1>{t('chat')}</h1>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn-icon" title={t('blockedUsers')}
+                  onClick={() => setModal('blocked-users')}>
+                  <Shield size={16} />
+                </button>
+              </div>
+            </div>
+
+            <div className="search-bar">
+              <Search size={15} className="search-icon" />
               <input
-                type="text"
                 placeholder={t('searchConversations')}
-                className="w-full pl-10 pr-4 py-2.5 bg-white/10 text-white placeholder-orange-100 rounded-xl border border-white/20 focus:outline-hidden focus:ring-2 focus:ring-white/30 focus:bg-white/20 transition-all font-medium"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={convSearch}
+                onChange={e => setConvSearch(e.target.value)}
               />
+            </div>
+
+            <div className="tabs">
+              {(['all', 'direct', 'group'] as const).map(tabKey => (
+                <button
+                  key={tabKey}
+                  className={`tab-btn ${activeTab === tabKey ? 'active' : ''}`}
+                  onClick={() => setActiveTab(tabKey)}
+                >
+                  {tabKey === 'all' ? t('all') : tabKey === 'direct' ? t('direct') : t('group')}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Tabs - Also Sticky */}
-          <div className="flex border-b border-orange-500/30 bg-white">
-            <button
-              onClick={() => setActiveTab('all')}
-              className={`flex-1 py-3 text-xs font-bold transition-all border-b-2 ${activeTab === 'all' ? 'border-orange-600 text-orange-600' : 'border-transparent text-gray-400 hover:text-orange-600'}`}
-            >
-              {t('all')}
+          <div className="conv-list">
+            {convLoading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
+                <Loader2 size={24} color="var(--text-muted)" className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} />
+              </div>
+            ) : filteredConvs.length === 0 ? (
+              <div className="empty-state" style={{ padding: 40 }}>
+                <div className="empty-icon"><MessageCircle size={32} color="var(--text-muted)" /></div>
+                <p style={{ fontSize: 14 }}>{t('noMembersFound')}</p>
+              </div>
+            ) : (
+              filteredConvs.map(conv => {
+                const name = displayName(conv);
+                const isGrp = conv.room_type === 'group';
+                const online = conv.other_user_status === 'online';
+                return (
+                  <button
+                    key={conv.id}
+                    className={`conv-item ${selected?.id === conv.id ? 'active' : ''}`}
+                    onClick={() => setSelected(conv)}
+                  >
+                    <Avatar
+                      name={name}
+                      size="md"
+                      isGroup={isGrp}
+                      online={isGrp ? undefined : online}
+                    />
+                    <div className="conv-info">
+                      <div className="conv-name">
+                        {isGrp && <Hash size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
+                        {name}
+                      </div>
+                      <div className="conv-last">
+                        {conv.last_message?.content ?? (
+                          <span style={{ fontStyle: 'italic' }}>{t('noMessages')}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                      {conv.last_message && (
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                          {fmtTime(conv.last_message.created_at)}
+                        </span>
+                      )}
+                      {conv.unread_count > 0 && selected?.id !== conv.id && (
+                        <span className="unread-badge">{conv.unread_count > 99 ? '99+' : conv.unread_count}</span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          <div className="sidebar-footer">
+            <button className="btn-primary" onClick={() => setModal('new-chat')}>
+              <Plus size={16} /> {t('startNewChat')}
             </button>
-            <button
-              onClick={() => setActiveTab('direct')}
-              className={`flex-1 py-3 text-xs font-bold transition-all border-b-2 ${activeTab === 'direct' ? 'border-orange-600 text-orange-600' : 'border-transparent text-gray-400 hover:text-orange-600'}`}
-            >
-              {t('direct')}
-            </button>
-            <button
-              onClick={() => setActiveTab('group')}
-              className={`flex-1 py-3 text-xs font-bold transition-all border-b-2 ${activeTab === 'group' ? 'border-orange-600 text-orange-600' : 'border-transparent text-gray-400 hover:text-orange-600'}`}
-            >
-              {t('group')}
+            <button className="btn-secondary" onClick={() => setModal('new-group')}>
+              <Users size={15} /> {t('group')}
             </button>
           </div>
         </div>
 
-        {/* Conversation List */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          {filteredConversations.length > 0 ? (
-            filteredConversations.map((conversation) => (
-              <button
-                key={conversation.id}
-                onClick={() => {
-                  setSelectedConversation(conversation);
-                  loadMessages(conversation.id); // Force call API on every click
-                }}
-                className={`w-full p-4 flex items-center space-x-3 hover:bg-orange-50 transition-colors border-b ${selectedConversation?.id === conversation.id ? 'bg-orange-50' : ''
-                  }`}
-              >
-                <div className="w-12 h-12 bg-linear-to-br from-amber-800 to-amber-700 rounded-full flex items-center justify-center shrink-0 shadow-sm">
-                  {conversation.room_type === 'group' ? (
-                    <Users className="h-6 w-6 text-white" />
-                  ) : (
-                    <span className="text-white font-bold text-lg">
-                      {(() => {
-                        const participants = conversation.participants || [];
-                        const localStorageUser = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null;
-                        const currentUserMobile = localStorageUser?.mobile_number;
-                        const currentUserId = Number(user?.id || localStorageUser?.id || localStorageUser?.user_id || localStorageUser?.pk);
+        {/* ── CHAT AREA ─────────────────────────────────────────────────────── */}
+        <div className={`chat-area ${!selected ? 'hidden' : ''}`} style={{
+          display: 'flex', flexDirection: 'column',
+        }}>
+          {!selected ? (
+            <div className="empty-state" style={{ flex: 1 }}>
+              <div className="empty-icon"><MessageCircle size={36} color="var(--text-muted)" /></div>
+              <h2 style={{ fontSize: 18, color: 'var(--text-secondary)', fontFamily: 'var(--font-display)' }}>
+                {t('selectConversation')}
+              </h2>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                {t('selectConversation')}
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Chat Header */}
+              <div className="chat-header" style={{ position: 'relative' }}>
+                <button className="btn-icon back-btn"
+                  style={{ display: 'flex' }}
+                  onClick={() => setSelected(null)}>
+                  <ArrowLeft size={18} />
+                </button>
 
-                        const normalizePhone = (p: string | undefined | null) => p ? p.replace(/\D/g, '').slice(-10) : '';
-                        const myMobile = normalizePhone(currentUserMobile);
+                <Avatar
+                  name={displayName(selected)}
+                  size="md"
+                  isGroup={selected.room_type === 'group'}
+                  online={selected.room_type === 'direct' ? selected.other_user_status === 'online' : undefined}
+                />
 
-                        // Find the other user (not current user) by ID or Mobile Number
-                        const other = participants.find(p => {
-                          const pId = Number(p.id);
-                          const pMobile = normalizePhone(p.mobile_number);
-                          const isMe = (pId !== 0 && pId === currentUserId) || (myMobile !== '' && pMobile === myMobile);
-                          return !isMe;
-                        }) || (participants.length > 1 ? participants[1] : participants[0]);
-
-                        const nickname = other?.id ? nicknames[other.id] : null;
-                        const label = nickname || other?.first_name || other?.name || other?.mobile_number || 'U';
-                        return label.charAt(0).toUpperCase();
-                      })()}
+                <div className="chat-header-info">
+                  <div className="chat-header-name">{displayName(selected)}</div>
+                  <div className="chat-header-status">
+                    {selected.room_type === 'direct' ? (
+                      <>
+                        <div className={`status-dot ${selected.other_user_status === 'online' ? 'online' : 'offline'}`} />
+                        <span style={{ color: selected.other_user_status === 'online' ? 'var(--online)' : 'var(--text-muted)' }}>
+                          {selected.other_user_status === 'online' ? t('online') : t('offline')}
+                        </span>
+                        <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>·</span>
+                      </>
+                    ) : (
+                      <>
+                        <Hash size={11} style={{ color: 'var(--text-muted)' }} />
+                        <span style={{ color: 'var(--text-muted)' }}>{t('group')}</span>
+                        <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>·</span>
+                      </>
+                    )}
+                    <span className="ws-indicator">
+                      <span className={`ws-dot ${wsConnected ? 'connected' : 'disconnected'}`} />
+                      <span style={{ color: wsConnected ? 'var(--online)' : 'var(--text-muted)' }}>{wsConnected ? t('Live') : t('reconnect')}</span>
                     </span>
+                  </div>
+                </div>
+
+                {/* Header menu */}
+                <div style={{ position: 'relative' }}>
+                  <button className="btn-icon" onClick={e => {
+                    e.stopPropagation();
+                    setOptionsFor(o => o === -1 ? null : -1);
+                  }}>
+                    <MoreVertical size={18} />
+                  </button>
+
+                  {optionsFor === -1 && (
+                    <div className="header-menu" onClick={e => e.stopPropagation()}>
+                      {selected.room_type === 'direct' && (
+                        <>
+                          <button className="header-menu-item" onClick={() => {
+                            setNicknameInput(nicknames[getOther(selected)?.id ?? 0] ?? '');
+                            setModal('nickname');
+                            setOptionsFor(null);
+                          }}>
+                            <Pencil size={14} /> {t('setNickname')}
+                          </button>
+                          <button className={`header-menu-item ${blockStatus?.i_blocked_them ? '' : 'danger'}`}
+                            onClick={() => { toggleBlock(); setOptionsFor(null); }}>
+                            <Shield size={14} />
+                            {blockStatus?.i_blocked_them ? t('unblockUser') : t('blockUser')}
+                          </button>
+                        </>
+                      )}
+                      {selected.room_type === 'group' && (
+                        <>
+                          <button className="header-menu-item" onClick={() => {
+                            setAddMemberInput('');
+                            setAddMemberId('');
+                            setSearchSuggestions([]);
+                            setModal('add-member');
+                            setOptionsFor(null);
+                          }}>
+                            <UserPlus size={14} /> {t('addMember')}
+                          </button>
+                          <button className="header-menu-item" onClick={() => {
+                            openGroupMembers();
+                            setOptionsFor(null);
+                          }}>
+                            <Eye size={14} /> {t('viewMember')}
+                          </button>
+                          <div className="header-menu-sep" />
+                          <button className="header-menu-item danger" onClick={() => {
+                            setModal('exit-group');
+                            setOptionsFor(null);
+                          }}>
+                            <LogOut size={14} /> {t('exitGroup')}
+                          </button>
+                        </>
+                      )}
+                      <div className="header-menu-sep" />
+                      <button className="header-menu-item danger" onClick={() => {
+                        setModal('clear-chat');
+                        setOptionsFor(null);
+                      }}>
+                        <Trash2 size={14} /> {t('clearChat')}
+                      </button>
+                    </div>
                   )}
                 </div>
-                <div className="flex-1 text-left min-w-0">
-                  <h3 className="font-bold text-gray-900 truncate">
-                    {conversation.room_type === 'group'
-                      ? (conversation.name || t('untitledGroup'))
-                      : (() => {
-                        const participants = conversation.participants || [];
-                        const localStorageUser = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null;
-                        const currentUserMobile = localStorageUser?.mobile_number;
-                        const currentUserId = Number(user?.id || localStorageUser?.id || localStorageUser?.user_id || localStorageUser?.pk);
+              </div>
 
-                        const normalizePhone = (p: string | undefined | null) => p ? p.replace(/\D/g, '').slice(-10) : '';
-                        const myMobile = normalizePhone(currentUserMobile);
+              {/* Messages */}
+              <div
+                className="messages-area"
+                ref={msgContainerRef}
+                onScroll={handleScroll}
+                onClick={() => setOptionsFor(null)}
+              >
+                {hasMore && (
+                  <button
+                    className="load-more-btn"
+                    onClick={() => loadMessages(selected.id, offset, false)}
+                    disabled={msgLoading}
+                  >
+                    {msgLoading ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite', display: 'inline', marginRight: 6 }} /> : <ChevronUp size={12} style={{ display: 'inline', marginRight: 6 }} />}
+                    {t('loading')}
+                  </button>
+                )}
 
-                        // Find the other user (not current user) by ID or Mobile Number
-                        const other = participants.find(p => {
-                          const pId = Number(p.id);
-                          const pMobile = normalizePhone(p.mobile_number);
-                          const isMe = (pId !== 0 && pId === currentUserId) || (myMobile !== '' && pMobile === myMobile);
-                          return !isMe;
-                        }) || (participants.length > 1 ? participants[1] : participants[0]);
+                {msgLoading && messages.length === 0 ? (
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Loader2 size={28} color="var(--text-muted)" style={{ animation: 'spin 1s linear infinite' }} />
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="empty-state" style={{ flex: 1 }}>
+                    <div className="empty-icon"><MessageCircle size={32} color="var(--text-muted)" /></div>
+                    <p style={{ fontSize: 13 }}>{t('noMessages')}</p>
+                  </div>
+                ) : null}
 
-                        const nickname = other?.id ? nicknames[other.id] : null;
-                        const displayName = nickname || other?.first_name || other?.name || other?.mobile_number || t('unknownUser');
-                        return displayName;
-                      })()}
-                  </h3>
-                  {conversation.last_message && (
-                    <p className="text-xs text-gray-500 truncate mt-0.5">
-                      {conversation.last_message.content}
-                    </p>
-                  )}
-                </div>
-                {conversation.unread_count > 0 && selectedConversation?.id !== conversation.id && (
-                  <div className="bg-orange-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-5 text-center shadow-sm">
-                    {conversation.unread_count}
+                {/* Render messages with date dividers */}
+                {messages.map((msg, idx) => {
+                  const prev = messages[idx - 1];
+                  const showDate = !prev || !sameDay(prev.created_at, msg.created_at);
+                  const own = isOwn(msg);
+
+                  return (
+                    <React.Fragment key={msg.id}>
+                      {showDate && (
+                        <div className="date-divider">
+                          {fmtDate(msg.created_at)}
+                        </div>
+                      )}
+                      <div
+                        className={`msg-row ${own ? 'own' : ''}`}
+                        data-msg-id={msg.id}
+                      >
+                        {/* Avatar for others */}
+                        {/* Avatar removed as per request */}
+
+                        <div
+                          className={`msg-bubble ${own ? 'own' : 'other'}`}
+                          onClick={e => e.stopPropagation()}
+                        >
+                          {/* Sender name in groups */}
+                          {!own && selected.room_type === 'group' && (
+                            <div className="msg-sender-name">
+                              {nicknames[msg.sender_id] ?? msg.sender_mobile}
+                            </div>
+                          )}
+
+                          {/* Content */}
+                          {msg.is_deleted ? (
+                            <span className="msg-deleted">🚫 {t('failedDeleteMessage')}</span>
+                          ) : (
+                            <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                              {msg.content}
+                            </span>
+                          )}
+
+                          {/* Attachments */}
+                          {msg.attachments?.map(att => (
+                            <div
+                              key={att.id}
+                              className="attachment-chip"
+                              onClick={() => API.downloadAttachment(att.id, att.filename).catch(() => toast('Download failed', 'error'))}
+                            >
+                              <FileIcon size={14} color="var(--accent)" />
+                              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {att.filename}
+                              </span>
+                              <Download size={12} color="var(--text-muted)" />
+                            </div>
+                          ))}
+
+                          {/* Meta: time + edited + ticks */}
+                          <div className="msg-meta">
+                            {msg.is_edited && <span className="msg-edited">{t('edit')}</span>}
+                            <span className="msg-time">{fmtTime(msg.created_at)}</span>
+                            {own && <Tick msg={msg} />}
+                          </div>
+
+                          {/* Options button */}
+                          {!msg.is_deleted && (
+                            <button
+                              className="msg-options-btn"
+                              onClick={e => {
+                                e.stopPropagation();
+                                setOptionsFor(o => o === msg.id ? null : msg.id);
+                              }}
+                            >
+                              <ChevronDown size={12} />
+                            </button>
+                          )}
+
+                          {/* Options menu */}
+                          {optionsFor === msg.id && (
+                            <div className="msg-options-menu" onClick={e => e.stopPropagation()}>
+                              <button className="msg-option-item" onClick={() => {
+                                navigator.clipboard.writeText(msg.content);
+                                toast('Copied', 'success');
+                                setOptionsFor(null);
+                              }}>
+                                <Copy size={13} /> Copy
+                              </button>
+                              <button className="msg-option-item" onClick={() => {
+                                setReplyTo(msg);
+                                setOptionsFor(null);
+                                inputRef.current?.focus();
+                              }}>
+                                <Reply size={13} /> Reply
+                              </button>
+                              {own && !msg.is_deleted && (
+                                <>
+                                  <button className="msg-option-item" onClick={() => {
+                                    setEditId(msg.id);
+                                    setEditContent(msg.content);
+                                    setOptionsFor(null);
+                                    inputRef.current?.focus();
+                                  }}>
+                                    <Pencil size={13} /> Edit
+                                  </button>
+                                  <button className="msg-option-item danger" onClick={() => {
+                                    setDeleteTarget(msg.id);
+                                    setModal('delete-msg');
+                                    setOptionsFor(null);
+                                  }}>
+                                    <Trash2 size={13} /> Delete
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
+
+                {/* Typing indicator */}
+                {typingUsers.size > 0 && (
+                  <div className="typing-row">
+                    <div className="typing-dots">
+                      <span /><span /><span />
+                    </div>
+                    <span>
+                      {selected.room_type === 'group'
+                        ? `${typingUsers.size} ${typingUsers.size === 1 ? 'person is' : 'people are'} typing`
+                        : 'Typing…'}
+                    </span>
                   </div>
                 )}
-              </button>
-            ))
-          ) : (
-            <div className="p-8 text-center bg-gray-50 h-full flex flex-col items-center justify-center text-gray-400">
-              <MessageCircle className="h-12 w-12 mb-3 opacity-20" />
-              <p className="text-sm font-medium">{t('noMessages')}</p>
-            </div>
+
+                <div ref={bottomRef} />
+              </div>
+
+              {/* Input area */}
+              {!canChat ? (
+                <div className="blocked-banner">
+                  {blockStatus?.i_blocked_them
+                    ? 'You have blocked this user. Unblock to send messages.'
+                    : 'You cannot reply — this user has restricted messages.'}
+                </div>
+              ) : (
+                <div className="input-bar">
+                  {/* Reply preview */}
+                  {replyTo && (
+                    <div className="reply-preview">
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="preview-label">Reply to</div>
+                        <div className="preview-text">{replyTo.content}</div>
+                      </div>
+                      <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                        onClick={() => setReplyTo(null)}>
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Edit preview */}
+                  {editId && (
+                    <div className="edit-preview">
+                      <Pencil size={13} style={{ color: '#3b82f6', flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="preview-label">Editing</div>
+                        <div className="preview-text">{editContent}</div>
+                      </div>
+                      <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                        onClick={() => { setEditId(null); setEditContent(''); }}>
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* File chips */}
+                  {files.length > 0 && (
+                    <div className="file-chips">
+                      {files.map((f, i) => (
+                        <div className="file-chip" key={i}>
+                          <FileIcon size={12} color="var(--accent)" />
+                          <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {f.name}
+                          </span>
+                          <button onClick={() => setFiles(p => p.filter((_, j) => j !== i))}>
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSend}>
+                    <div className="input-row">
+                      <button
+                        type="button"
+                        className="btn-icon"
+                        style={{ border: 'none', background: 'none', flexShrink: 0 }}
+                        onClick={() => fileRef.current?.click()}
+                      >
+                        <Paperclip size={18} color="var(--text-muted)" />
+                      </button>
+                      <input
+                        type="file"
+                        ref={fileRef}
+                        multiple
+                        style={{ display: 'none' }}
+                        onChange={e => setFiles(Array.from(e.target.files ?? []))}
+                        accept="image/jpeg,image/png,application/pdf,text/plain"
+                      />
+                      <input
+                        ref={inputRef}
+                        className="input-field"
+                        placeholder={t('typeMessage')}
+                        value={editId ? editContent : input}
+                        onChange={e => handleInputChange(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSend();
+                          }
+                        }}
+                        autoComplete="off"
+                      />
+                      <button
+                        type="submit"
+                        className="send-btn"
+                        disabled={sending || (!(editId ? editContent : input).trim() && files.length === 0)}
+                      >
+                        {sending
+                          ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                          : <Send size={16} />}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        {/* Start Chat Button - Fixed at bottom */}
-        <div className="p-4 bg-white border-t shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-          <button
-            onClick={() => setShowNewChatModal(true)}
-            className="w-full py-3 px-4 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 text-white rounded-xl font-bold flex items-center justify-center space-x-2 hover:from-orange-700 hover:to-amber-700 hover:shadow-lg transition-all active:scale-[0.98] shadow-md"
-          >
-            <Plus className="h-5 w-5" />
-            <span>{t('startNewChat')}</span>
-          </button>
-        </div>
-      </div>
+        {/* ── MODALS ──────────────────────────────────────────────────────────── */}
 
-      {/* Chat Area */}
-      <div className={`flex-1 flex flex-col h-full bg-[#f0f2f5] overflow-hidden ${selectedConversation ? 'flex' : 'hidden md:flex'}`}>
-        {selectedConversation ? (
-          <>
-            {/* Chat Header - Fixed at top of its area */}
-            <div className="p-3 bg-white border-b flex items-center justify-between shadow-sm z-40 sticky top-0 bg-opacity-100 shrink-0">
-              <div className="flex items-center space-x-3">
-                <button
-                  onClick={() => setSelectedConversation(null)}
-                  className="md:hidden p-2 -ml-2 text-orange-600 hover:bg-orange-50 rounded-full transition-colors"
-                >
-                  <ArrowLeft className="h-6 w-6" />
-                </button>
-                <div className="w-10 h-10 bg-linear-to-br from-amber-800 to-amber-700 rounded-full flex items-center justify-center shadow-sm">
-                  <span className="text-white font-bold text-lg">
-                    {selectedConversation.room_type === 'group'
-                      ? selectedConversation.name?.charAt(0).toUpperCase()
-                      : (() => {
-                        const participants = selectedConversation.participants || [];
-                        const other = participants.find(p => Number(p.id) !== Number(user?.id)) || participants[0];
-                        const nickname = other?.id ? nicknames[other.id] : null;
-                        const label = nickname || other?.first_name || other?.name || other?.mobile_number || 'U';
-                        return label.charAt(0).toUpperCase();
-                      })()}
-                  </span>
-                </div>
-                <div>
-                  {selectedConversation.room_type === 'direct' ? (() => {
-                    const participants = selectedConversation.participants || [];
-                    const localStorageUser = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null;
-                    const currentUserMobile = localStorageUser?.mobile_number;
-                    const currentUserId = Number(user?.id || localStorageUser?.id || localStorageUser?.user_id || localStorageUser?.pk);
-
-                    const normalizePhone = (p: string | undefined | null) => p ? p.replace(/\D/g, '').slice(-10) : '';
-                    const myMobile = normalizePhone(currentUserMobile);
-
-                    // Find the other user (not current user) by ID or Mobile Number
-                    const other = participants.find(p => {
-                      const pId = Number(p.id);
-                      const pMobile = normalizePhone(p.mobile_number);
-                      const isMe = (pId !== 0 && pId === currentUserId) || (myMobile !== '' && pMobile === myMobile);
-                      return !isMe;
-                    }) || (participants.length > 1 ? participants[1] : participants[0]);
-
-                    const nickname = other?.id ? nicknames[other.id] : null;
-                    const displayName = nickname || other?.first_name || other?.name || 'User';
-                    const mobileNumber = other?.mobile_number || '';
-
-                    return (
-                      <>
-                        <h3 className="font-bold text-gray-900 leading-tight">
-                          {displayName}
-                        </h3>
-                        <p className="text-amber-600 font-semibold text-sm">
-                          {mobileNumber}
-                        </p>
-                      </>
-                    );
-                  })() : (
-                    <h3 className="font-bold text-gray-900 leading-tight">
-                      {selectedConversation.name || t('untitledGroup')}
-                    </h3>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center space-x-1 relative">
-                {selectedConversation.room_type === 'direct' && (
-                  <button
-                    onClick={() => setShowHeaderOptions(!showHeaderOptions)}
-                    className="p-2 text-gray-400 hover:text-orange-600 rounded-full hover:bg-gray-100 transition-all"
-                  >
-                    <MoreVertical className="h-5 w-5" />
-                  </button>
-                )}
-                <button
-                  onClick={() => setShowChatOptions(!showChatOptions)}
-                  className={`p-2 text-gray-400 hover:text-orange-600 rounded-full hover:bg-gray-100 transition-all ${selectedConversation.room_type === 'group' ? '' : 'hidden md:block'}`}
-                >
-                  {selectedConversation.room_type === 'group' ? <MoreVertical className="h-5 w-5" /> : <div className="h-5 w-5 border-2 border-gray-400 rounded-full flex items-center justify-center"><div className="h-1 w-1 bg-gray-400 rounded-full"></div></div>}
-                </button>
-
-                {/* Nickname options */}
-                {showHeaderOptions && (
-                  <div className="absolute right-0 top-12 w-48 bg-white border border-gray-100 rounded-xl shadow-2xl py-2 z-60 animate-in fade-in slide-in-from-top-2 duration-200">
-                    <button
-                      onClick={() => { setShowNicknameModal(true); setShowHeaderOptions(false); }}
-                      className="w-full text-left px-4 py-3 hover:bg-gray-50 text-sm font-medium text-gray-800"
-                    >
-                      {t('changeName')}
-                    </button>
-                  </div>
-                )}
-                {showChatOptions && (
-                  <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 block">
-                    {selectedConversation.room_type === 'direct' && (
-                      <button
-                        onClick={handleToggleBlock}
-                        className="w-full text-left px-4 py-3 hover:bg-gray-100 text-sm font-medium text-gray-800"
-                      >
-                        {isBlockedByMe ? t('unblockUser') : t('blockUser')}
-                      </button>
-                    )}
-                    {selectedConversation.room_type === 'group' && (
-                      <>
-                        <button
-                          onClick={() => { setShowAddMemberModal(true); setShowChatOptions(false); }}
-                          className="w-full text-left px-4 py-3 hover:bg-gray-100 text-sm font-medium text-gray-800"
-                        >
-                          {t('addMember')}
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (selectedConversation) {
-                              fetchGroupMembers(selectedConversation.id);
-                              setShowViewMembersModal(true);
-                              setShowChatOptions(false);
-                            }
-                          }}
-                          className="w-full text-left px-4 py-3 hover:bg-gray-100 text-sm font-medium text-gray-800"
-                        >
-                          {t('viewMember')}
-                        </button>
-                        <button
-                          onClick={handleExitGroup}
-                          className="w-full text-left px-4 py-3 hover:bg-gray-100 text-sm font-medium text-red-600"
-                        >
-                          {t('exitGroup')}
-                        </button>
-                      </>
-                    )}
-                    <button
-                      onClick={() => setShowClearChatModal(true)}
-                      className="w-full text-left px-4 py-3 hover:bg-gray-100 text-sm font-medium text-red-600 border-t"
-                    >
-                      {t('clearChat')}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#e5ddd5]">
-              {(() => {
-                console.log('Rendering messages:', messages.length, messages);
-                return null;
-              })()}
-              {messages && messages.map((message, index) => {
-                const currentSenderId = message.sender_id ? Number(message.sender_id) : null;
-                const nextSenderId = messages[index + 1] ? (messages[index + 1].sender_id ? Number(messages[index + 1].sender_id) : null) : null;
-
-                const normalizePhone = (p: string | undefined | null) => p ? p.replace(/\D/g, '').slice(-10) : '';
-                const userMobile = user?.mobile_number ? normalizePhone(user.mobile_number) : '';
-                const senderMobile = message.sender_mobile ? normalizePhone(message.sender_mobile) : '';
-
-                // Final fail-safe isOwn check
-                const isOwn = (currentSenderId !== null && Number(user?.id) !== 0 && currentSenderId === Number(user?.id)) ||
-                  (senderMobile !== '' && senderMobile === userMobile) ||
-                  (senderMobile !== '' && localStorage.getItem('user') && normalizePhone(JSON.parse(localStorage.getItem('user')!).mobile_number) === senderMobile);
-
-                const isLastInGroup = index === messages.length - 1 || (nextSenderId !== currentSenderId);
-
-                return (
-                  <div
-                    key={message.id}
-                    className={`flex ${isOwn ? 'justify-end' : 'justify-start'} ${!isLastInGroup ? 'mb-1' : 'mb-4'}`}
-                  >
-                    <div className={`max-w-xs md:max-w-md ${isOwn ? 'order-2' : 'order-1'}`}>
-                      {/* Sender mobile number display */}
-                      {!isOwn && (
-                        <p className="text-xs text-gray-600 mb-1 ml-2 font-semibold">{message.sender_mobile}</p>
-                      )}
-
-                      {/* Message bubble */}
-                      <div
-                        className={`group relative px-4 py-2 ${isOwn
-                          ? 'bg-[#dcf8c6] text-gray-900 rounded-br-none'
-                          : 'bg-white text-gray-900 rounded-bl-none'
-                          } rounded-2xl shadow-sm`}
-                      >
-                        {/* Message Options for Edit/Delete (WhatsApp style arrow) */}
-                        {isOwn && (
-                          <div className={`absolute top-1 right-2 z-10 ${showMessageOptions === message.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setShowMessageOptions(showMessageOptions === message.id ? null : message.id);
-                              }}
-                              className="p-0.5 rounded-full hover:bg-black/5"
-                            >
-                              <ChevronDown className="h-5 w-5 text-gray-500" />
-                            </button>
-                            {showMessageOptions === message.id && (
-                              <div className="absolute right-0 top-6 w-32 bg-white border border-gray-100 rounded-lg shadow-xl py-2 z-20 overflow-hidden">
-                                <button
-                                  onClick={() => {
-                                    setEditingMessageId(message.id);
-                                    setEditMessageContent(message.content);
-                                    setShowMessageOptions(null);
-                                  }}
-                                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                                >
-                                  {t('edit')}
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setMsgToDeleteId(message.id);
-                                    setShowMsgDeleteModal(true);
-                                    setShowMessageOptions(null);
-                                  }}
-                                  className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors border-t border-gray-50"
-                                >
-                                  {t('delete')}
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {editingMessageId === message.id ? (
-                          <div className="flex flex-col mt-3">
-                            <input
-                              type="text"
-                              value={editMessageContent}
-                              onChange={e => setEditMessageContent(e.target.value)}
-                              className="px-2 py-1 text-sm border rounded w-full mb-1 bg-white"
-                              autoFocus
-                            />
-                            <div className="flex justify-end space-x-2">
-                              <button onClick={() => setEditingMessageId(null)} className="text-xs text-gray-500">{t('cancel')}</button>
-                              <button onClick={handleEditMessage} className="text-xs font-bold text-orange-600">{t('save')}</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="wrap-break-word text-sm pr-4">{message.content || ''}</p>
-                        )}
-
-                        {/* Render all attachments - FIXED IMAGE DISPLAY */}
-                        {message.attachments && message.attachments.length > 0 && (
-                          <div className="mt-2 space-y-2">
-                            {message.attachments.map((att) => {
-                              const isImage = att.file_type?.startsWith('image/') ||
-                                att.file_name?.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i);
-
-                              if (isImage) {
-                                const isDownloaded = downloadedFiles.has(att.id);
-                                return (
-                                  <div key={att.id} className={`relative group/img ${!isDownloaded ? 'cursor-pointer' : ''}`}
-                                    onClick={() => !isDownloaded && handleDownload(att.id, att.file_name)}>
-                                    <img
-                                      src={att.url || (att.id ? `/api/chat/attachments/${att.id}/download/` : '')}
-                                      alt={att.file_name || 'Image'}
-                                      className="rounded-lg max-w-full max-h-64 object-cover hover:opacity-90 transition-opacity border"
-                                      onError={(e) => {
-                                        const target = e.target as HTMLImageElement;
-                                        target.style.display = 'none';
-                                        const parent = target.parentElement;
-                                        if (parent) {
-                                          const fallback = document.createElement('div');
-                                          fallback.className = 'flex items-center space-x-3 p-3 bg-black/5 rounded-lg cursor-pointer hover:bg-black/10 transition-colors border border-black/5';
-                                          fallback.innerHTML = `
-                                            <svg class="h-8 w-8 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                            </svg>
-                                            <div class="flex-1 min-w-0">
-                                              <p class="text-sm font-bold text-gray-900 truncate">${att.file_name || 'Image'}</p>
-                                              <p class="text-xs text-gray-500">Click to download</p>
-                                            </div>
-                                          `;
-                                          parent.appendChild(fallback);
-                                        }
-                                      }}
-                                    />
-                                    {!isDownloaded && (
-                                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity bg-black/30 rounded-lg">
-                                        <Download className="h-8 w-8 text-white drop-shadow-lg" />
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              } else {
-                                const isDownloaded = downloadedFiles.has(att.id);
-                                return (
-                                  <div
-                                    key={att.id}
-                                    className={`flex items-center space-x-3 p-3 bg-black/5 rounded-lg ${!isDownloaded ? 'cursor-pointer hover:bg-black/10' : ''} transition-colors border border-black/5`}
-                                    onClick={() => !isDownloaded && handleDownload(att.id, att.file_name)}
-                                  >
-                                    <FileIcon className="h-8 w-8 text-orange-600" />
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-bold text-gray-900 truncate">{att.file_name || 'Document'}</p>
-                                      <p className="text-[10px] text-gray-500 uppercase font-black tracking-tighter">{isDownloaded ? 'Downloaded' : 'Click to download'}</p>
-                                    </div>
-                                    {!isDownloaded && <Download className="h-5 w-5 text-gray-400" />}
-                                  </div>
-                                );
-                              }
-                            })}
-                          </div>
-                        )}
-
-                        {/* Message status and time for own messages */}
-                        {isOwn && (
-                          <div className="flex items-center justify-end mt-1 space-x-1">
-                            <span className="text-xs text-gray-500">
-                              {message.created_at ? new Date(message.created_at).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              }) : ''}
-                            </span>
-
-                            <div className="flex items-center">
-                              {message.read_at ? (
-                                <CheckCheck className="h-4 w-4 text-[#53bdeb]" />
-                              ) : message.delivered_at ? (
-                                <CheckCheck className="h-4 w-4 text-gray-400" />
-                              ) : (
-                                <Check className="h-4 w-4 text-gray-400" />
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Time for received messages */}
-                        {!isOwn && (
-                          <span className="text-xs text-gray-500 mt-1 block">
-                            {message.created_at ? new Date(message.created_at).toLocaleTimeString([], {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            }) : ''}
-                          </span>
-                        )}
-                      </div>
+        {/* New Direct Chat */}
+        {modal === 'new-chat' && (
+          <div className="modal-overlay" onClick={() => setModal('none')}>
+            <div className="modal-card" onClick={e => e.stopPropagation()}>
+              <div className="modal-title">{t('startNewChat')}</div>
+              <input
+                className="modal-input"
+                placeholder={t('enterMobileNumber')}
+                value={newChatInput}
+                autoFocus
+                onChange={e => {
+                  const v = e.target.value.replace(/\D/g, '').slice(0, 10);
+                  setNewChatInput(v);
+                  handleSearch(v);
+                }}
+                onKeyDown={e => e.key === 'Enter' && handleNewDirect()}
+              />
+              {searchSuggestions.length > 0 && (
+                <div className="suggestions-list">
+                  {searchSuggestions.map((s: any) => (
+                    <div className="suggestion-item" key={s.id}
+                      onClick={() => { setNewChatInput(s.mobile_number); setSearchSuggestions([]); }}>
+                      <div className="sug-name">{s.full_name ?? s.mobile_number}</div>
+                      <div className="sug-mobile">{s.mobile_number}</div>
                     </div>
-                  </div>
-                );
-              })}
-
-              {messages.length === 0 && (
-                <div className="text-center py-12">
-                  <MessageCircle className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500">{t('noMessages')}. {t('startChat')}!</p>
+                  ))}
                 </div>
               )}
-
-              {/* Typing Indicator */}
-              {typingUsers.size > 0 && (
-                <div className="flex items-center space-x-2 px-4 py-2 text-gray-500 text-sm">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                  </div>
-                  <span>
-                    {selectedConversation.room_type === 'group'
-                      ? `${typingUsers.size} ${t('peopleTyping')}`
-                      : t('typing')
-                    }
-                  </span>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Message Input */}
-            {isBlockedByMe || amIBlocked ? (
-              <div className="p-4 bg-gray-100 border-t flex items-center justify-center text-gray-500 shrink-0">
-                <p>{isBlockedByMe ? t('youHaveBlocked') : t('cannotReply')}</p>
+              <div className="modal-actions">
+                <button className="btn-outline" onClick={() => { setModal('none'); setSearchSuggestions([]); }}>{t('cancel')}</button>
+                <button className="btn-primary" style={{ flex: 1 }} onClick={handleNewDirect}>{t('startChat')}</button>
               </div>
-            ) : (
-              <form onSubmit={handleSendMessage} className="p-4 bg-white border-t shrink-0">
-
-                {selectedFiles.length > 0 && (
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    {selectedFiles.map((file, idx) => (
-                      <div key={idx} className="flex items-center bg-gray-100 p-2 rounded w-fit max-w-full">
-                        <span className="text-sm truncate mr-2">{file.name}</span>
-                        <button type="button" onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== idx))} className="text-red-500 font-bold">&times;</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="flex items-center space-x-3">
-                  <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-gray-500 hover:text-orange-600 transition-colors shrink-0">
-                    <Paperclip className="h-6 w-6" />
-                  </button>
-                  <input type="file" className="hidden" ref={fileInputRef} multiple onChange={(e) => setSelectedFiles(Array.from(e.target.files || []))} />
-                  <input
-                    type="text"
-                    value={messageInput}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value.length <= 10 || isNaN(Number(value))) {
-                        setMessageInput(value);
-                        handleTyping();
-                      }
-                    }}
-                    placeholder={t('typeMessage')}
-                    className="flex-1 px-4 py-3 border border-gray-300 rounded-full focus:ring-2 focus:ring-orange-500 focus:border-transparent min-w-0"
-                  />
-                  <button
-                    type="submit"
-                    disabled={sending || (!messageInput.trim() && selectedFiles.length === 0)}
-                    className="p-3 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 text-white rounded-full hover:from-orange-700 hover:to-amber-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                  >
-                    {sending ? (
-                      <Loader2 className="h-6 w-6 animate-spin" />
-                    ) : (
-                      <Send className="h-6 w-6" />
-                    )}
-                  </button>
-                </div>
-              </form>
-            )}
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center bg-gray-50">
-            <div className="text-center">
-              <MessageCircle className="h-24 w-24 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500 text-lg">{t('selectConversation')}</p>
             </div>
           </div>
         )}
-      </div>
 
-      {/* Add Member Modal */}
-      {
-        showAddMemberModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-100 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm transform transition-all">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">{t('addMember')}</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('mobileNumber')}</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={addMemberSearchText}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setAddMemberSearchText(val);
-                        setAddMemberUserId(val); // Fallback for manual entry
-                        handleSearchSuggestions(val);
-                      }}
-                      placeholder={t('enterMobileNumber')}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-hidden"
-                    />
-
-                    {/* Suggestions Dropdown for Adding Member */}
-                    {searchSuggestions.length > 0 && (
-                      <div className="absolute top-11 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl z-110 max-h-48 overflow-y-auto">
-                        {searchSuggestions.map((suggestion) => (
-                          <button
-                            key={suggestion.id}
-                            type="button"
-                            onClick={() => {
-                              setAddMemberUserId(suggestion.id.toString());
-                              setAddMemberSearchText(suggestion.mobile_number);
-                              setSearchSuggestions([]);
-                            }}
-                            className="w-full text-left px-4 py-3 hover:bg-orange-50 border-b border-gray-50 last:border-0 transition-colors"
-                          >
-                            <div className="font-bold text-gray-900">{suggestion.full_name}</div>
-                            <div className="text-xs text-gray-500">{suggestion.mobile_number}</div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+        {/* New Group */}
+        {modal === 'new-group' && (
+          <div className="modal-overlay" onClick={() => setModal('none')}>
+            <div className="modal-card" onClick={e => e.stopPropagation()}>
+              <div className="modal-title">{t('createGroup')}</div>
+              <input
+                className="modal-input"
+                placeholder={t('groupName')}
+                value={newGroupName}
+                autoFocus
+                onChange={e => setNewGroupName(e.target.value)}
+              />
+              <input
+                className="modal-input"
+                placeholder={t('enterMobileNumbers')}
+                value={newGroupMembers}
+                onChange={e => {
+                  const v = e.target.value.replace(/[^\d,]/g, '');
+                  setNewGroupMembers(v);
+                  const parts = v.split(',');
+                  const last = parts[parts.length - 1].trim();
+                  if (last.length >= 3) handleSearch(last);
+                  else setSearchSuggestions([]);
+                }}
+              />
+              {searchSuggestions.length > 0 && (
+                <div className="suggestions-list">
+                  {searchSuggestions.map((s: any) => (
+                    <div className="suggestion-item" key={s.id} onClick={() => {
+                      const parts = newGroupMembers.split(',');
+                      parts[parts.length - 1] = s.mobile_number;
+                      setNewGroupMembers(parts.join(',') + ',');
+                      setSearchSuggestions([]);
+                    }}>
+                      <div className="sug-name">{s.full_name ?? s.mobile_number}</div>
+                      <div className="sug-mobile">{s.mobile_number}</div>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex space-x-3">
-                  <button
-                    onClick={() => setShowAddMemberModal(false)}
-                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-colors"
-                  >
-                    {t('cancel')}
-                  </button>
-                  <button
-                    onClick={handleAddMember}
-                    className="flex-1 px-4 py-2 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 text-white rounded-xl hover:from-orange-700 hover:to-amber-700 font-bold shadow-lg transition-all"
-                  >
-                    {t('add')}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-      }
-
-      {/* Clear Chat Confirmation Modal */}
-      {
-        showClearChatModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-110 p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm transform transition-all animate-in zoom-in-95 duration-200">
-              <div className="flex flex-col items-center text-center">
-                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
-                  <Trash2 className="h-8 w-8 text-red-600" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">{t('clearChatConfirm')}</h3>
-                <p className="text-gray-500 mb-6 text-sm">
-                  {t('clearChatDesc')}
-                </p>
-                <div className="flex w-full space-x-3">
-                  <button
-                    onClick={() => setShowClearChatModal(false)}
-                    className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-colors"
-                  >
-                    {t('cancel')}
-                  </button>
-                  <button
-                    onClick={handleDeleteConversation}
-                    className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 font-bold shadow-lg transition-all"
-                  >
-                    {t('clearChat')}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-      }
-
-      {/* Message Delete Confirmation Modal */}
-      {
-        showMsgDeleteModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-110 p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm transform transition-all animate-in zoom-in-95 duration-200">
-              <div className="flex flex-col items-center text-center">
-                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
-                  <Trash2 className="h-8 w-8 text-red-600" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">{t('deleteMessageConfirm')}</h3>
-                <p className="text-gray-500 mb-6 text-sm">
-                  {t('deleteMessageDesc')}
-                </p>
-                <div className="flex w-full space-x-3">
-                  <button
-                    onClick={() => setShowMsgDeleteModal(false)}
-                    className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-colors"
-                  >
-                    {t('cancel')}
-                  </button>
-                  <button
-                    onClick={handleDeleteMessage}
-                    className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 font-bold shadow-lg transition-all"
-                  >
-                    {t('delete')}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-      }
-
-      {/* Nickname Modal */}
-      {
-        showNicknameModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-100 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm transform transition-all">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">{t('setNickname')}</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('nickname') || 'Nickname'}</label>
-                  <input
-                    type="text"
-                    value={nicknameValue}
-                    onChange={(e) => setNicknameValue(e.target.value)}
-                    placeholder={t('enterNickname')}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-hidden"
-                    autoFocus
-                  />
-                </div>
-                <div className="flex space-x-3">
-                  <button
-                    onClick={() => setShowNicknameModal(false)}
-                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-colors"
-                  >
-                    {t('cancel')}
-                  </button>
-                  <button
-                    onClick={handleUpdateNickname}
-                    className="flex-1 px-4 py-2 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 text-white rounded-xl hover:from-orange-700 hover:to-amber-700 font-bold shadow-lg transition-all"
-                  >
-                    {t('save')}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-      }
-
-      {/* New Chat Modal */}
-      {
-        showNewChatModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-100 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm relative transform transition-all">
-              <h3 className="text-xl font-bold mb-4">{t('startNewChat')}</h3>
-
-              <div className="flex space-x-2 mb-4">
-                <button
-                  onClick={() => setIsGroupChat(false)}
-                  className={`flex-1 py-1 text-sm rounded ${!isGroupChat ? 'bg-orange-100 text-orange-700 font-bold' : 'bg-gray-100 text-gray-500'}`}
-                >
-                  {t('direct')}
-                </button>
-                <button
-                  onClick={() => setIsGroupChat(true)}
-                  className={`flex-1 py-1 text-sm rounded ${isGroupChat ? 'bg-orange-100 text-orange-700 font-bold' : 'bg-gray-100 text-gray-500'}`}
-                >
-                  {t('group')}
-                </button>
-              </div>
-
-              {!isGroupChat ? (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleCreateDirectChat();
-                  }}
-                >
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder={t('enterMobileNumber')}
-                      value={newChatUserId}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val.length <= 10 || isNaN(Number(val))) {
-                          setNewChatUserId(val);
-                          handleSearchSuggestions(val);
-                        }
-                      }}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent mb-4"
-                      autoFocus
-                    />
-
-                    {/* Suggestions Dropdown for Direct Chat */}
-                    {searchSuggestions.length > 0 && (
-                      <div className="absolute top-11 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl z-110 max-h-48 overflow-y-auto">
-                        {searchSuggestions.map((suggestion) => (
-                          <button
-                            key={suggestion.id}
-                            type="button"
-                            onClick={() => {
-                              setNewChatUserId(suggestion.mobile_number);
-                              setSearchSuggestions([]);
-                            }}
-                            className="w-full text-left px-4 py-3 hover:bg-orange-50 border-b border-gray-50 last:border-0 transition-colors"
-                          >
-                            <div className="font-bold text-gray-900">{suggestion.full_name}</div>
-                            <div className="text-xs text-gray-500">{suggestion.mobile_number}</div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {isSearching && (
-                      <div className="absolute right-3 top-3">
-                        <Loader2 className="h-4 w-4 animate-spin text-orange-600" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex space-x-3">
-                    <button
-                      type="button"
-                      onClick={() => setShowNewChatModal(false)}
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                    >
-                      {t('cancel')}
-                    </button>
-                    <button
-                      type="submit"
-                      className="flex-1 px-4 py-2 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 text-white rounded-lg hover:from-orange-700 hover:to-amber-700"
-                    >
-                      {t('startChat')}
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleCreateGroupChat();
-                  }}
-                >
-                  <input
-                    type="text"
-                    placeholder={t('groupName')}
-                    value={newGroupName}
-                    onChange={(e) => setNewGroupName(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent mb-2"
-                    autoFocus
-                  />
-                  <div className="relative mb-4">
-                    <input
-                      type="text"
-                      placeholder={t('enterMobileNumbers')}
-                      value={newGroupMembers}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setNewGroupMembers(val);
-
-                        // If typing a single number (or at the end of comma list), try searching
-                        const parts = val.split(',');
-                        const lastPart = parts[parts.length - 1].trim();
-                        if (lastPart.length >= 3) {
-                          handleSearchSuggestions(lastPart);
-                        } else {
-                          setSearchSuggestions([]);
-                        }
-                      }}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                    />
-
-                    {/* Suggestions Dropdown for Group Chat */}
-                    {searchSuggestions.length > 0 && (
-                      <div className="absolute top-11 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl z-110 max-h-48 overflow-y-auto">
-                        {searchSuggestions.map((suggestion) => (
-                          <button
-                            key={suggestion.id}
-                            type="button"
-                            onClick={() => {
-                              const parts = newGroupMembers.split(',');
-                              // Use mobile number instead of ID for consistency
-                              parts[parts.length - 1] = suggestion.mobile_number;
-                              setNewGroupMembers(parts.join(',') + ',');
-                              setSearchSuggestions([]);
-                            }}
-                            className="w-full text-left px-4 py-3 hover:bg-orange-50 border-b border-gray-50 last:border-0 transition-colors"
-                          >
-                            <div className="font-bold text-gray-900">{suggestion.full_name}</div>
-                            <div className="text-xs text-gray-500">{suggestion.mobile_number}</div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex space-x-3">
-                    <button
-                      type="button"
-                      onClick={() => setShowNewChatModal(false)}
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                    >
-                      {t('cancel')}
-                    </button>
-                    <button
-                      type="submit"
-                      className="flex-1 px-4 py-2 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 text-white rounded-lg hover:from-orange-700 hover:to-amber-700"
-                    >
-                      {t('createGroup')}
-                    </button>
-                  </div>
-                </form>
               )}
+              <div className="modal-actions">
+                <button className="btn-outline" onClick={() => { setModal('none'); setSearchSuggestions([]); }}>{t('cancel')}</button>
+                <button className="btn-primary" style={{ flex: 1 }} onClick={handleNewGroup}>{t('createGroup')}</button>
+              </div>
             </div>
           </div>
-        )
-      }
+        )}
 
-      {/* Blocked Users Modal */}
-      {
-        showBlockedUsersModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-96 relative">
-              <h3 className="text-xl font-bold mb-4">{t('blockedUsers')}</h3>
-              <div className="max-h-64 overflow-y-auto mb-4 space-y-2">
-                {blockedUsers.length > 0 ? (
-                  blockedUsers.map((bu, idx) => {
-                    // depending on the backend response structure for blocked users
-                    const userId = bu.user_id || bu.blocked_user || bu.id;
-                    const mobile = bu.mobile_number || bu.mobile;
-                    const name = bu.name || userId;
+        {/* Clear Chat Confirm */}
+        {modal === 'clear-chat' && (
+          <div className="modal-overlay" onClick={() => setModal('none')}>
+            <div className="modal-card" onClick={e => e.stopPropagation()}
+              style={{ textAlign: 'center' }}>
+              <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(239,68,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <Trash2 size={26} color="#ef4444" />
+              </div>
+              <div className="modal-title" style={{ textAlign: 'center' }}>{t('clearChatConfirm')}</div>
+              <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 0 }}>
+                {t('clearChatDesc')}
+              </p>
+              <div className="modal-actions">
+                <button className="btn-outline" onClick={() => setModal('none')}>{t('cancel')}</button>
+                <button className="btn-danger" onClick={confirmClear}>{t('clearChat')}</button>
+              </div>
+            </div>
+          </div>
+        )}
 
-                    return (
-                      <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded border">
-                        <div>
-                          <p className="font-semibold text-sm text-gray-800">{name}</p>
-                          {mobile && <p className="text-xs text-gray-500">{mobile}</p>}
-                        </div>
-                        <button
-                          onClick={() => handleUnblockFromList(userId)}
-                          className="px-3 py-1 bg-orange-100 text-orange-700 text-xs font-bold rounded hover:bg-orange-200"
-                        >
-                          {t('unblockUser')}
-                        </button>
-                      </div>
-                    );
-                  })
+        {/* Delete Message Confirm */}
+        {modal === 'delete-msg' && (
+          <div className="modal-overlay" onClick={() => setModal('none')}>
+            <div className="modal-card" onClick={e => e.stopPropagation()}
+              style={{ textAlign: 'center' }}>
+              <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(239,68,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <Trash2 size={26} color="#ef4444" />
+              </div>
+              <div className="modal-title" style={{ textAlign: 'center' }}>{t('deleteMessageConfirm')}</div>
+              <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 0 }}>
+                {t('deleteMessageDesc')}
+              </p>
+              <div className="modal-actions">
+                <button className="btn-outline" onClick={() => setModal('none')}>{t('cancel')}</button>
+                <button className="btn-danger" onClick={confirmDelete}>{t('delete')}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Nickname Modal */}
+        {modal === 'nickname' && (
+          <div className="modal-overlay" onClick={() => setModal('none')}>
+            <div className="modal-card" onClick={e => e.stopPropagation()}>
+              <div className="modal-title">{t('setNickname')}</div>
+              <input
+                className="modal-input"
+                placeholder={t('enterNickname')}
+                value={nicknameInput}
+                autoFocus
+                onChange={e => setNicknameInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleNickname()}
+              />
+              <div className="modal-actions">
+                <button className="btn-outline" onClick={() => setModal('none')}>{t('cancel')}</button>
+                <button className="btn-primary" style={{ flex: 1 }} onClick={handleNickname}>{t('save')}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Blocked Users */}
+        {modal === 'blocked-users' && (
+          <div className="modal-overlay" onClick={() => setModal('none')}>
+            <div className="modal-card" onClick={e => e.stopPropagation()}>
+              <div className="modal-title">{t('blockedUsers')}</div>
+              <div style={{ maxHeight: 280, overflowY: 'auto', marginBottom: 8 }}>
+                {blockedList.length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: '20px 0' }}>
+                    {t('noBlockedUsers')}
+                  </p>
                 ) : (
-                  <p className="text-gray-500 text-sm text-center py-4">{t('noBlockedUsers')}</p>
-                )}
-              </div>
-              <button
-                onClick={() => setShowBlockedUsersModal(false)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-gray-700"
-              >
-                {t('close')}
-              </button>
-            </div>
-          </div>
-        )
-      }
-
-      {/* View Members Modal */}
-      {
-        showViewMembersModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-100 p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md transform transition-all animate-in zoom-in-95 duration-200">
-              <div className="flex items-center justify-between mb-4 border-b pb-3">
-                <h3 className="text-xl font-bold text-gray-900">{t('groupMembers')}</h3>
-                <button
-                  onClick={() => setShowViewMembersModal(false)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X className="h-6 w-6" />
-                </button>
-              </div>
-
-              <div className="max-h-[60vh] overflow-y-auto mb-4 space-y-3 pr-2 custom-scrollbar">
-                {fetchingMembers ? (
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <Loader2 className="h-8 w-8 text-orange-600 animate-spin mb-2" />
-                    <p className="text-sm text-gray-500 font-medium">{t('loadingMembers')}</p>
-                  </div>
-                ) : groupMembers.length > 0 ? (
-                  groupMembers.map((member: any) => (
-                    <div key={member.user_id || member.id} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 hover:bg-orange-50 transition-colors border border-transparent hover:border-orange-100 group">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-linear-to-br from-amber-800 to-amber-700 rounded-full flex items-center justify-center shadow-sm text-white font-bold shrink-0">
-                          {member.first_name?.charAt(0).toUpperCase() || member.profile_name?.charAt(0).toUpperCase() || member.name?.charAt(0).toUpperCase() || member.mobile_number?.charAt(0) || 'U'}
-                        </div>
-                        <div className="min-w-0 text-left">
-                          <p className="font-bold text-gray-900 truncate">
-                            {Number(member.user_id || member.id) === Number(user?.id) ? t('you') : (member.first_name || member.profile_name || member.name || t('user'))}
-                            {Number(member.user_id || member.id) === Number(selectedConversation?.created_by) && (
-                              <span className="ml-2 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-black rounded-md uppercase tracking-wider">{t('admin')}</span>
-                            )}
-                          </p>
-                          <p className="text-xs text-gray-500 font-medium">{member.mobile_number}</p>
-                        </div>
-                      </div>
-
-                      {Number(member.user_id || member.id) !== Number(user?.id) &&
-                        Number(member.user_id || member.id) !== Number(selectedConversation?.created_by) && (
-                          <button
-                            onClick={() => handleRemoveMember(member.user_id || member.id)}
-                            disabled={removingMemberId === (member.user_id || member.id)}
-                            className="flex items-center space-x-1 px-2 py-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all border border-transparent hover:border-red-100"
-                            title="Remove from group"
-                          >
-                            {removingMemberId === (member.user_id || member.id) ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <>
-                                <Trash2 className="h-4 w-4" />
-                                <span className="text-xs font-bold uppercase tracking-wider">{t('remove')}</span>
-                              </>
-                            )}
-                          </button>
-                        )}
+                  blockedList.map((b: any, i) => (
+                    <div className="blocked-list-item" key={i}>
+                      <div className="blocked-mobile">{b.blocked_mobile}</div>
+                      <button className="btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }}
+                        onClick={async () => {
+                          try {
+                            await API.unblockUser(b.blocked_id ?? b.blocked);
+                            setBlockedList(p => p.filter((_, j) => j !== i));
+                            toast('Unblocked', 'success');
+                          } catch { toast('Failed', 'error'); }
+                        }}>
+                        {t('unblockUser')}
+                      </button>
                     </div>
                   ))
-                ) : (
-                  <div className="text-center py-8">
-                    <Users className="h-12 w-12 text-gray-200 mx-auto mb-2" />
-                    <p className="text-gray-500">{t('noMembersFound')}</p>
-                  </div>
                 )}
               </div>
+              <button className="btn-outline" style={{ width: '100%' }} onClick={() => setModal('none')}>{t('cancel')}</button>
+            </div>
+          </div>
+        )}
 
-              <div className="flex justify-end pt-2">
-                <button
-                  onClick={() => setShowViewMembersModal(false)}
-                  className="px-6 py-2.5 bg-linear-to-r from-amber-900 via-amber-800 to-orange-900 text-white rounded-xl hover:from-orange-700 hover:to-amber-700 font-bold shadow-lg transition-all active:scale-95"
-                >
-                  {t('close')}
-                </button>
+        {/* Group Members */}
+        {modal === 'group-members' && (
+          <div className="modal-overlay" onClick={() => setModal('none')}>
+            <div className="modal-card" onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <div className="modal-title" style={{ marginBottom: 0 }}>{t('groupMembers')}</div>
+                <button className="btn-icon" onClick={() => setModal('none')}><X size={16} /></button>
+              </div>
+              <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 8 }}>
+                {membersLoading ? (
+                  <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
+                    <Loader2 size={22} style={{ animation: 'spin 1s linear infinite' }} />
+                  </div>
+                ) : groupMembers.map(m => (
+                  <div className="member-row" key={m.user_id}>
+                    <Avatar name={m.profile_name ?? m.mobile_number} size="sm" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {m.profile_name ?? m.mobile_number}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.mobile_number}</div>
+                    </div>
+                    <span className={`member-role-badge ${m.role}`}>{m.role}</span>
+                    {m.role !== 'admin' && m.user_id !== currentUser?.id && (
+                      <button
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '4px 8px', borderRadius: 6, fontSize: 12, fontFamily: 'var(--font-body)' }}
+                        onClick={() => removeMember(m.user_id)}
+                      >
+                        {t('remove')}
+                      </button>
+                    )}
+                    {m.role === 'admin' && m.user_id !== currentUser?.id && (
+                      <span style={{ fontSize: 11, color: '#999', fontStyle: 'italic' }}>Only admins can remove admins</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button className="btn-outline" style={{ width: '100%' }} onClick={() => setModal('none')}>{t('cancel')}</button>
+            </div>
+          </div>
+        )}
+
+        {/* Add Member */}
+        {modal === 'add-member' && (
+          <div className="modal-overlay" onClick={() => setModal('none')}>
+            <div className="modal-card" onClick={e => e.stopPropagation()}>
+              <div className="modal-title">{t('addMember')}</div>
+              <input
+                className="modal-input"
+                placeholder={t('enterMobileNumber')}
+                value={addMemberInput}
+                autoFocus
+                onChange={e => {
+                  const v = e.target.value.replace(/\D/g, '').slice(0, 10);
+                  setAddMemberInput(v);
+                  handleSearch(v);
+                }}
+              />
+              {searchSuggestions.length > 0 && (
+                <div className="suggestions-list">
+                  {searchSuggestions.map((s: any) => (
+                    <div className="suggestion-item" key={s.id}
+                      onClick={() => { setAddMemberId(String(s.id)); setAddMemberInput(s.mobile_number); setSearchSuggestions([]); }}>
+                      <div className="sug-name">{s.full_name ?? s.mobile_number}</div>
+                      <div className="sug-mobile">{s.mobile_number}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="modal-actions">
+                <button className="btn-outline" onClick={() => { setModal('none'); setSearchSuggestions([]); }}>Cancel</button>
+                <button className="btn-primary" style={{ flex: 1 }} onClick={addMember}>Add</button>
               </div>
             </div>
           </div>
-        )
-      }
+        )}
 
-      {/* Exit Group Confirmation Modal */}
-      {showExitGroupModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-100 p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm transform transition-all animate-in zoom-in-95 duration-200">
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Users className="h-8 w-8 text-red-600" />
+        {/* Exit Group */}
+        {modal === 'exit-group' && (
+          <div className="modal-overlay" onClick={() => setModal('none')}>
+            <div className="modal-card" onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+              <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(239,68,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <LogOut size={26} color="#ef4444" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">{t('exitGroup')}</h3>
-              <p className="text-gray-600 text-sm">
-                {t('exitGroupDesc')}
+              <div className="modal-title" style={{ textAlign: 'center' }}>Exit Group?</div>
+              <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 0 }}>
+                You will no longer receive messages from this group.
               </p>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowExitGroupModal(false)}
-                className="flex-1 px-4 py-3 border border-gray-300 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-colors"
-              >
-                {t('cancel')}
-              </button>
-              <button
-                onClick={confirmExitGroup}
-                className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors"
-              >
-                {t('exitGroup')}
-              </button>
+              <div className="modal-actions">
+                <button className="btn-outline" onClick={() => setModal('none')}>Cancel</button>
+                <button className="btn-danger" onClick={confirmExit}>Exit</button>
+              </div>
             </div>
           </div>
+        )}
+
+        {/* ── TOASTS ─────────────────────────────────────────────────────────── */}
+        <div className="toasts">
+          {toasts.map(t => (
+            <div key={t.id} className={`toast-item ${t.type}`}>{t.msg}</div>
+          ))}
         </div>
-      )}
-    </div >
+      </div>
+
+      {/* Spin keyframe (used inline) */}
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
+    </>
   );
 }

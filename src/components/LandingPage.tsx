@@ -97,7 +97,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
     return (
         <div className="min-h-screen bg-white overflow-x-hidden">
             {/* Hero Section */}
-            <div className="relative h-[100svh]">
+            <div className="relative h-svh">
                 {heroImages.map((image, index) => (
                     <div
                         key={index}
@@ -469,7 +469,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                                 <div className="flex items-center justify-center">
                                     <div className="h-12 w-12 rounded-lg bg-white border-2 border-red-300  flex items-center justify-center shadow-lg">
                                         <img
-                                            src="/images/logo.png" // replace with your actual file path
+                                            src="/images/logo.png" // 
                                             alt="KODI Logo"
                                             className="h-12 w-12 object-contain"
                                         />

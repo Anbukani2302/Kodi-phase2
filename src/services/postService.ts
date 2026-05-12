@@ -58,7 +58,7 @@ export const postService = {
 
   // Get posts for a specific user
   getUserPosts: async (userId: number, page: number = 1, pageSize: number = 20) => {
-    const response = await api.get(`/api/posts/user/${userId}/?page=${page}&page_size=${pageSize}`);
+    const response = await api.get(`/api/posts/my-posts/?page=${page}&page_size=${pageSize}`);
     return response.data;
   },
 
@@ -88,22 +88,28 @@ export const postService = {
     return response.data;
   },
 
-  // Like post (Using GET as requested)
-  likePost: async (postId: number) => {
-    const response = await api.post(`/api/posts/${postId}/like/`);
-    return response;
+  // Check like status
+  getLikeStatus: async (postId: number) => {
+    const response = await api.get(`/api/posts/${postId}/like/`);
+    return response.data;
   },
 
-  // Unlike post (Using GET as requested)
+  // Like post
+  likePost: async (postId: number) => {
+    const response = await api.post(`/api/posts/${postId}/like/`);
+    return response.data;
+  },
+
+  // Unlike post
   unlikePost: async (postId: number) => {
-    const response = await api.get(`/api/posts/${postId}/like/`);
-    return response;
+    const response = await api.delete(`/api/posts/${postId}/like/`);
+    return response.data;
   },
 
   // Save/Unsave post
   savePost: async (postId: number) => {
     const response = await api.post(`/api/posts/${postId}/save/`);
-    return response;
+    return response.data;
   },
 
   // Share post

@@ -2,7 +2,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
 export const BASE_URL = 'https://kodi-phase2.onrender.com/';
 
-// export const BASE_URL = 'http://192.168.1.9:8002/';
+// export const BASE_URL = 'http://192.168.1.19:8002/';
 
 
 // Create axios instance

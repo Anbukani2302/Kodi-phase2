@@ -74,27 +74,13 @@ export default function Post({
   const [mediaPreviewIndex, setMediaPreviewIndex] = useState<number | null>(null);
 
   useEffect(() => {
-    const triggerLikeApi = async () => {
-      try {
-        // Hit the like API as requested (GET /api/posts/{id}/like/)
-        // Note: Using GET as requested by the user, even though like is usually POST
-        const response = await postService.likePost(post.id);
-        
-        // Update the UI state with the initial like status from API response
-        if (response && response.data) {
-          onLike(post.id, response.data);
-        }
-        
-        console.log(`Like API hit for post ${post.id}`);
-      } catch (error) {
-        console.error('Error hitting like API on load:', error);
-      }
-    };
-    triggerLikeApi();
+    // The feed API (/api/posts/feed/) already returns the like status (is_liked).
+    // So we don't need to call getLikeStatus here anymore.
   }, [post.id]);
 
   const isAuthor = currentUser?.id === post.author?.id;
-  const hasMedia = post.media_count && post.media_count > 0;
+  const isLiked = post.user_interaction?.is_liked || (post as any).is_liked || (post as any).liked;
+  const hasMedia = post.media && post.media.length > 0;
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -187,7 +173,7 @@ export default function Post({
     try {
       const response = await postService.likePost(post.id);
       // The API response data contains the updated engagement and interaction info
-      onLike(post.id, response.data);
+      onLike(post.id, response);
     } catch (error) {
       console.error('Error liking post:', error);
     }
@@ -196,7 +182,7 @@ export default function Post({
   const handleSave = async () => {
     try {
       const response = await postService.savePost(post.id);
-      onSave(post.id, response.data);
+      onSave(post.id, response);
     } catch (error) {
       console.error('Error saving post:', error);
     }
@@ -391,9 +377,9 @@ export default function Post({
         {/* Media Gallery */}
         {hasMedia && !isEditing && post.media && post.media.length > 0 && (
           <div className={`mt-4 grid gap-2 ${post.media.length === 1 ? 'grid-cols-1' :
-              post.media.length === 2 ? 'grid-cols-2' :
-                post.media.length === 3 ? 'grid-cols-2' :
-                  'grid-cols-2'
+            post.media.length === 2 ? 'grid-cols-2' :
+              post.media.length === 3 ? 'grid-cols-2' :
+                'grid-cols-2'
             }`}>
             {post.media.slice(0, 4).map((media, index) => (
               <div
@@ -509,7 +495,10 @@ export default function Post({
       <div className="px-4 py-2 border-t border-gray-100">
         <div className="flex items-center justify-between text-sm text-gray-500">
           <div className="flex items-center space-x-1">
-            <Heart className={`h-4 w-4 ${post.user_interaction?.is_liked ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
+            <Heart
+              className={`h-4 w-4 ${isLiked ? 'text-red-500' : 'text-gray-400'}`}
+              fill={isLiked ? "currentColor" : "none"}
+            />
             <span>{post.engagement?.likes_count || 0} {post.engagement?.likes_count === 1 ? 'like' : 'likes'}</span>
           </div>
           <div className="flex items-center space-x-3">
@@ -524,12 +513,15 @@ export default function Post({
       <div className="flex items-center border-t border-gray-100">
         <button
           onClick={handleLike}
-          className={`flex-1 flex items-center justify-center space-x-2 py-3 transition-colors ${post.user_interaction?.is_liked
-              ? 'text-red-500 bg-red-50'
-              : 'text-gray-600 hover:bg-gray-50'
+          className={`flex-1 flex items-center justify-center space-x-2 py-3 transition-colors ${isLiked
+            ? 'text-red-500 bg-red-50'
+            : 'text-gray-600 hover:bg-gray-50'
             }`}
         >
-          <Heart className={`h-5 w-5 ${post.user_interaction?.is_liked ? 'fill-current' : ''}`} />
+          <Heart
+            className={`h-5 w-5 ${isLiked ? 'text-red-600' : ''}`}
+            fill={isLiked ? "currentColor" : "none"}
+          />
           <span className="text-sm font-medium">{language === 'ta' ? 'விருப்பம்' : 'Like'}</span>
         </button>
 

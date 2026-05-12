@@ -20,8 +20,10 @@ interface WebSocketMessage {
 
 interface WebSocketCallbacks {
   onMessage?: (message: any) => void;
+  onMessageDelivered?: (messageId: number) => void;
+  onMessageSeen?: (messageId: number) => void;
   onTyping?: (senderId: number, isTyping: boolean) => void;
-  onStatus?: (userId: number, status: string) => void;
+  onUserStatus?: (userId: number, status: string) => void;
   onError?: (error: string) => void;
   onHistory?: (history: any[]) => void;
 }
@@ -47,9 +49,25 @@ export class WebSocketService {
     // Derive WebSocket host from the backend BASE_URL
     const url = new URL(BASE_URL);
     const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${url.host}/ws/chat/${this.roomId}/?token=${this.token}`;
-    console.log('Connecting WebSocket to:', wsUrl);
-    this.ws = new WebSocket(wsUrl);
+    // Use the host from the error message if BASE_URL doesn't match
+    const host = url.host || '192.168.1.20:8002';
+    // Ensure we remove any trailing slashes from host and that it doesn't contain the protocol
+    const cleanHost = host.replace(/^https?:\/\//, '').replace(/\/$/, '');
+
+    // Check if the current environment is using a secure context but trying to connect to insecure WS
+    const isSecureContext = window.location.protocol === 'https:';
+    const finalWsProtocol = isSecureContext ? 'wss:' : wsProtocol;
+
+    const wsUrl = `${finalWsProtocol}//${cleanHost}/ws/chat/${this.roomId}/?token=${this.token}`;
+    console.log('Connecting WebSocket to:', wsUrl, 'Protocol:', finalWsProtocol);
+
+    try {
+      this.ws = new WebSocket(wsUrl);
+    } catch (e) {
+      console.error('Failed to create WebSocket instance:', e);
+      this.reconnect();
+      return;
+    }
 
     this.ws.onopen = () => {
       console.log('WebSocket connected');
@@ -81,13 +99,37 @@ export class WebSocketService {
   private handleMessage(data: WebSocketMessage) {
     switch (data.type) {
       case 'message':
+        // Process all messages - let ChatPage handle filtering
         this.callbacks.onMessage?.({
           id: data.message_id,
           content: data.content,
-          sender_id: data.sender_id,
+          sender_id: Number(data.sender_id),   // always a number
           sender_mobile: data.sender_mobile,
           created_at: data.created_at,
+          is_delivered: (data as any).is_delivered ?? false,
+          is_read: (data as any).is_read ?? false,
+          attachments: (data as any).attachments ?? [],
+          is_deleted: (data as any).is_deleted ?? false,
+          is_edited: (data as any).is_edited ?? false,
+          edited_at: (data as any).edited_at ?? null,
+          read_at: (data as any).read_at ?? null,
+          delivered_at: (data as any).delivered_at ?? null,
         });
+        break;
+
+      case 'delivered':           // actual backend event: {type:"delivered", message_id, delivered_to}
+      case 'message_delivered':
+        if (data.message_id) {
+          // "delivered" from backend = recipient received+read → show blue ticks
+          this.callbacks.onMessageSeen?.(data.message_id);
+        }
+        break;
+
+      case 'message_seen':
+      case 'message_read':
+        if (data.message_id) {
+          this.callbacks.onMessageSeen?.(data.message_id);
+        }
         break;
 
       case 'typing':
@@ -95,13 +137,14 @@ export class WebSocketService {
         break;
 
       case 'status':
+      case 'user_status':
         // Handle different status message formats
         if (data.status) {
-          this.callbacks.onStatus?.(data.user_id!, data.status!);
+          this.callbacks.onUserStatus?.(Number(data.user_id!), data.status!);
         } else if (data.online !== undefined) {
-          this.callbacks.onStatus?.(data.user_id!, data.online ? 'online' : 'offline');
+          this.callbacks.onUserStatus?.(Number(data.user_id!), data.online ? 'online' : 'offline');
         } else if (data.offline !== undefined) {
-          this.callbacks.onStatus?.(data.user_id!, data.offline ? 'offline' : 'online');
+          this.callbacks.onUserStatus?.(Number(data.user_id!), data.offline ? 'offline' : 'online');
         }
         break;
 
@@ -114,7 +157,7 @@ export class WebSocketService {
         break;
 
       default:
-        console.log('Unknown message type:', data.type);
+        console.log('Unknown WS message type:', data.type, data);
     }
   }
 

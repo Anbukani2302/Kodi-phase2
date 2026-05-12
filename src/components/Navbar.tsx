@@ -66,7 +66,7 @@ export default function Navbar({
   const toggleLanguage = async () => {
     const newLanguage = language === "ta" ? "en" : "ta";
     console.log("Switching language from", language, "to", newLanguage);
-  
+
     if (isAuthenticated) {
       try {
         // Call the language-switch endpoint
@@ -88,7 +88,7 @@ export default function Navbar({
   useEffect(() => {
     if (isAuthenticated) {
       fetchNotifications();
-      
+
       // Setup periodic polling for unread count (e.g., every 30 seconds)
       const interval = setInterval(() => {
         notificationService.getUnreadCount().then(count => {
@@ -96,7 +96,7 @@ export default function Navbar({
           setHasUnreadNotifications(count > 0);
         }).catch(console.error);
       }, 30000);
-      
+
       return () => clearInterval(interval);
     }
   }, [isAuthenticated]);
@@ -107,7 +107,7 @@ export default function Navbar({
       // Handle both cases: { results: [], count: 0 } or direct array []
       const notificationsList = Array.isArray(response) ? response : (response.results || []);
       setNotifications(notificationsList);
-      
+
       const count = await notificationService.getUnreadCount();
       setUnreadCount(count);
       if (count > 0) {
@@ -123,15 +123,16 @@ export default function Navbar({
   const handleNotificationsClick = async () => {
     setIsNotificationsOpen(!isNotificationsOpen);
     if (!isNotificationsOpen) {
+      setIsMobileMenuOpen(false);
       setHasUnreadNotifications(false); // Hide count locally
-      
+
       try {
         // 1. Get the latest notifications list to show in UI
         const response = await notificationService.getNotifications();
         const notificationsList = Array.isArray(response) ? response : (response.results || []);
         setNotifications(notificationsList);
         console.log("Notifications list fetched via service for UI", notificationsList);
-        
+
         // 2. Get fresh unread count
         const count = await notificationService.getUnreadCount();
         setUnreadCount(count);
@@ -146,7 +147,7 @@ export default function Navbar({
   const handleSingleNotificationClick = async (notif: any) => {
     setIsNotificationsOpen(false);
     setShowAllNotificationsModal(false);
-    
+
     // Immediately update local state to show as read (Facebook style color change)
     // and decrement unread count if it was unread
     if (!notif.is_read) {
@@ -154,14 +155,14 @@ export default function Navbar({
       setUnreadCount(prev => Math.max(0, prev - 1));
       setHasUnreadNotifications(unreadCount > 1);
     }
-    
+
     try {
       // 1. Hit the single notification view API
       await notificationService.getNotification(notif.id);
-      
+
       // 2. Mark as read API
       await notificationService.markAsRead(notif.id);
-      
+
       // 3. Double check fresh unread count from server
       const count = await notificationService.getUnreadCount();
       setUnreadCount(count);
@@ -198,6 +199,30 @@ export default function Navbar({
     }
   };
 
+  const handleMarkAllRead = async () => {
+    try {
+      await notificationService.markAllAsRead();
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+      setHasUnreadNotifications(false);
+    } catch (error) {
+      console.error("Failed to mark all as read:", error);
+    }
+  };
+
+  const handleMarkSingleRead = async (id: number) => {
+    try {
+      await notificationService.markAsRead(id);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+      // Optionally fetch from server to be sure
+      // const count = await notificationService.getUnreadCount();
+      // setUnreadCount(count);
+    } catch (error) {
+      console.error("Failed to mark single notification as read:", error);
+    }
+  };
+
   const NotificationsModal = () => {
     if (!showAllNotificationsModal) return null;
 
@@ -221,17 +246,15 @@ export default function Navbar({
                 {notifications.map((notif) => (
                   <div
                     key={notif.id}
-                    className={`p-4 rounded-xl border transition-all cursor-pointer flex gap-3 ${
-                      notif.is_read 
-                        ? 'bg-white border-amber-100 text-gray-600' 
-                        : 'bg-linear-to-r from-blue-50 to-indigo-50 border-blue-200 text-blue-900 shadow-sm'
-                    } hover:shadow-md hover:scale-[1.01]`}
+                    className={`p-4 rounded-xl border transition-all cursor-pointer flex gap-3 ${notif.is_read
+                      ? 'bg-white border-amber-100 text-gray-600'
+                      : 'bg-linear-to-r from-blue-50 to-indigo-50 border-blue-200 text-blue-900 shadow-sm'
+                      } hover:shadow-md hover:scale-[1.01]`}
                     onClick={() => handleSingleNotificationClick(notif)}
                   >
                     <div className="shrink-0">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold shadow-sm ${
-                        notif.is_read ? 'bg-gray-400' : 'bg-linear-to-br from-blue-500 to-indigo-600'
-                      }`}>
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold shadow-sm ${notif.is_read ? 'bg-gray-400' : 'bg-linear-to-br from-blue-500 to-indigo-600'
+                        }`}>
                         {notif.title?.charAt(0).toUpperCase() || '?'}
                       </div>
                     </div>
@@ -242,12 +265,24 @@ export default function Navbar({
                       </div>
                       <p className="text-xs leading-relaxed mb-2">{notif.message}</p>
                       <div className="flex items-center gap-2">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                          notif.is_read ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-700'
-                        }`}>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${notif.is_read ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-700'
+                          }`}>
                           {notif.notification_type?.replace('_', ' ')}
                         </span>
-                        {!notif.is_read && <span className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></span>}
+                        {!notif.is_read && (
+                          <div className="flex flex-col items-end gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMarkSingleRead(notif.id);
+                              }}
+                              className="px-2 py-1 text-[10px] font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-all whitespace-nowrap cursor-pointer transform hover:scale-105"
+                            >
+                              Mark Read
+                            </button>
+                            <span className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -425,18 +460,31 @@ export default function Navbar({
                             className="fixed inset-0 z-101"
                             onClick={() => setIsNotificationsOpen(false)}
                           ></div>
-                          <div className="absolute right-0 mt-3 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-amber-100 py-3 z-102 animate-fadeIn overflow-hidden">
-                            <div className="px-4 py-2 border-b border-amber-100 flex justify-between items-center bg-linear-to-r from-amber-50 to-orange-50">
+                          <div className="fixed md:absolute top-[68px] md:top-full left-4 right-4 md:left-auto md:right-0 mt-1 md:mt-3 w-auto md:w-80 lg:w-96 bg-white rounded-2xl shadow-2xl border border-amber-100 py-3 z-102 animate-fadeIn overflow-hidden flex flex-col max-h-[85vh] md:max-h-none shadow-amber-200/20">
+                            <div className="px-4 py-2 border-b border-amber-100 flex justify-between items-center bg-linear-to-r from-amber-50 to-orange-50 shrink-0">
                               <h3 className="font-bold text-amber-900">{t('notifications') || 'Notifications'}</h3>
-                              <button
-                                onClick={() => setIsNotificationsOpen(false)}
-                                className="text-amber-400 hover:text-amber-600 p-1"
-                              >
-                                <X className="h-4 w-4" />
-                              </button>
+                              <div className="flex items-center gap-2">
+                                {unreadCount > 0 && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleMarkAllRead();
+                                    }}
+                                    className="text-[10px] font-bold text-blue-600 hover:text-blue-800 transition-colors cursor-pointer underline"
+                                  >
+                                    {t('mark_all_read') || 'Mark all read'}
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => setIsNotificationsOpen(false)}
+                                  className="text-amber-400 hover:text-amber-600 p-1 cursor-pointer transition-colors"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
                             </div>
 
-                            <div className="max-h-[70vh] overflow-y-auto">
+                            <div className="max-h-[60vh] md:max-h-[70vh] overflow-y-auto overflow-x-hidden">
                               {notifications.length === 0 ? (
                                 <div className="px-4 py-12 text-center">
                                   <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -449,16 +497,14 @@ export default function Navbar({
                                   {notifications.map((notif) => (
                                     <div
                                       key={notif.id}
-                                      className={`px-4 py-4 transition-colors group cursor-pointer ${
-                                        notif.is_read ? 'hover:bg-amber-50/50' : 'bg-blue-50/50 hover:bg-blue-100/50'
-                                      }`}
+                                      className={`px-4 py-4 transition-colors group cursor-pointer ${notif.is_read ? 'hover:bg-amber-50/50' : 'bg-blue-50/50 hover:bg-blue-100/50'
+                                        }`}
                                       onClick={() => handleSingleNotificationClick(notif)}
                                     >
                                       <div className="flex gap-3">
                                         <div className="shrink-0">
-                                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-sm ${
-                                            notif.is_read ? 'bg-gray-400' : 'bg-linear-to-br from-blue-500 to-indigo-600'
-                                          }`}>
+                                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-sm ${notif.is_read ? 'bg-gray-400' : 'bg-linear-to-br from-blue-500 to-indigo-600'
+                                            }`}>
                                             {notif.title?.charAt(0).toUpperCase() || notif.notification_type?.charAt(0).toUpperCase() || '?'}
                                           </div>
                                         </div>
@@ -467,9 +513,8 @@ export default function Navbar({
                                             {notif.message}
                                           </p>
                                           <div className="flex items-center gap-2 mt-1">
-                                            <span className={`text-[10px] sm:text-xs font-medium px-2 py-0.5 rounded-full ${
-                                              notif.is_read ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-700'
-                                            }`}>
+                                            <span className={`text-[10px] sm:text-xs font-medium px-2 py-0.5 rounded-full ${notif.is_read ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-700'
+                                              }`}>
                                               {notif.notification_type?.replace('_', ' ')}
                                             </span>
                                             <span className="text-[10px] text-amber-400 flex items-center gap-1">
@@ -479,8 +524,17 @@ export default function Navbar({
                                           </div>
                                         </div>
                                         {!notif.is_read && (
-                                          <div className="shrink-0 self-center">
-                                            <div className="w-2.5 h-2.5 bg-blue-600 rounded-full"></div>
+                                          <div className="shrink-0 self-center flex flex-col items-end gap-1">
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleMarkSingleRead(notif.id);
+                                              }}
+                                              className="px-2 py-1 text-[10px] font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-all whitespace-nowrap cursor-pointer transform hover:scale-105"
+                                            >
+                                              Mark Read
+                                            </button>
+                                            <div className="w-2.5 h-2.5 bg-blue-600 rounded-full animate-pulse"></div>
                                           </div>
                                         )}
                                       </div>
@@ -490,7 +544,7 @@ export default function Navbar({
                               )}
                             </div>
 
-                            <div className="px-4 py-2 border-t border-amber-100 text-center">
+                            <div className="px-4 py-2 border-t border-amber-100 text-center shrink-0">
                               <button
                                 onClick={() => {
                                   setIsNotificationsOpen(false);
@@ -598,7 +652,10 @@ export default function Navbar({
                 {/* Mobile Menu Toggle Button */}
                 <button
                   className="md:hidden flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white text-amber-700 hover:bg-linear-to-br hover:from-amber-50 hover:to-orange-50 border border-amber-200 shadow-sm transition-all hover:shadow-md cursor-pointer"
-                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  onClick={() => {
+                    setIsMobileMenuOpen(!isMobileMenuOpen);
+                    setIsNotificationsOpen(false);
+                  }}
                   aria-label="Toggle menu"
                 >
                   {isMobileMenuOpen ? (

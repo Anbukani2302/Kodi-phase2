@@ -150,7 +150,7 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({ onNotificat
         <div className="fixed md:absolute top-0 left-0 right-0 md:top-full md:left-auto md:right-0 w-full md:w-[360px] h-full md:h-auto bg-white md:rounded-xl shadow-2xl md:shadow-[0_12px_28px_0_rgba(0,0,0,0.2),0_2px_4px_0_rgba(0,0,0,0.1)] overflow-hidden z-[9999] md:mt-2">
           {/* Mobile Safe Area Spacer */}
           <div className="h-safe-top md:hidden bg-white" />
-          
+
           <div className="flex flex-col h-full md:h-auto">
             {/* Header */}
             <div className="px-4 py-3 md:py-4 flex items-center justify-between border-b md:border-b-0 border-gray-100 bg-white">
@@ -194,8 +194,8 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({ onNotificat
                       key={notification.id}
                       onClick={() => handleNotificationItemClick(notification)}
                       className={`px-3 py-2 mx-2 my-0.5 flex items-start gap-3 cursor-pointer rounded-lg transition-colors duration-150 ${!notification.is_read
-                          ? 'bg-blue-50/60 hover:bg-blue-50'
-                          : 'hover:bg-gray-100'
+                        ? 'bg-blue-50/60 hover:bg-blue-50'
+                        : 'hover:bg-gray-100'
                         }`}
                     >
                       {/* Icon */}
@@ -217,10 +217,23 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({ onNotificat
                         </p>
                       </div>
 
+                      {/* Mark Read button on the right */}
+                      {!notification.is_read && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            markAllAsRead();
+                          }}
+                          className="shrink-0 ml-auto px-2 py-1.5 text-[11px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors self-center whitespace-nowrap"
+                        >
+                          Mark Read
+                        </button>
+                      )}
+
                       {/* Unread blue dot */}
                       {!notification.is_read && (
-                        <div className="shrink-0 self-center">
-                          <div className="w-3 h-3 rounded-full bg-blue-500" />
+                        <div className="shrink-0 self-center ml-1">
+                          <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
                         </div>
                       )}
                     </div>
