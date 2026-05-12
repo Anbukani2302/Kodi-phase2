@@ -320,7 +320,7 @@ const API = {
       const fd = new FormData();
       fd.append('content', content);
       files.forEach(f => fd.append('attachments', f));
-      const res = await fetch(`api/chat/rooms/${roomId}/messages/`, {
+      const res = await fetch(`${BASE_URL}api/chat/rooms/${roomId}/messages/`, {
         method: 'POST',
         headers: { ...getAuthHeaders() },
         body: fd,
@@ -442,7 +442,7 @@ const API = {
 
   // GET /api/chat/attachments/:id/download/
   downloadAttachment: async (id: number, filename: string) => {
-    const res = await fetch(`/api/chat/attachments/${id}/download/`, {
+    const res = await fetch(`${BASE_URL}api/chat/attachments/${id}/download/`, {
       headers: getAuthHeaders(),
     });
     if (!res.ok) throw new Error('Download failed');
