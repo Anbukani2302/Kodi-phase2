@@ -244,6 +244,10 @@ export default function Post({
     setShowAllComments(!showAllComments);
   };
 
+  // Safe media access helper
+  const getMedia = () => post.media || [];
+  const getMediaAtIndex = (index: number) => getMedia()[index];
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
       {/* Post Header */}
@@ -374,7 +378,7 @@ export default function Post({
           )}
         </div>
 
-        {/* Media Gallery */}
+        {/* Media Gallery - FIXED: Safe null checks with optional chaining and fallback */}
         {hasMedia && !isEditing && post.media && post.media.length > 0 && (
           <div className={`mt-4 grid gap-2 ${post.media.length === 1 ? 'grid-cols-1' :
             post.media.length === 2 ? 'grid-cols-2' :
@@ -383,38 +387,38 @@ export default function Post({
             }`}>
             {post.media.slice(0, 4).map((media, index) => (
               <div
-                key={media.id}
-                className={`relative group cursor-pointer overflow-hidden rounded-xl bg-gray-100 ${post.media.length === 3 && index === 0 ? 'col-span-2' : ''
+                key={media?.id || index}
+                className={`relative group cursor-pointer overflow-hidden rounded-xl bg-gray-100 ${post.media && post.media.length === 3 && index === 0 ? 'col-span-2' : ''
                   }`}
                 style={{ paddingBottom: '75%' }}
                 onClick={() => setMediaPreviewIndex(index)}
               >
-                {media.media_type === 'image' ? (
+                {media?.media_type === 'image' ? (
                   <img
-                    src={getFullImageUrl(media.file)}
-                    alt={media.caption || `Media ${index + 1}`}
+                    src={getFullImageUrl(media?.file || '')}
+                    alt={media?.caption || `Media ${index + 1}`}
                     className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
-                ) : media.media_type === 'video' ? (
+                ) : media?.media_type === 'video' ? (
                   <video
-                    src={getFullImageUrl(media.file)}
+                    src={getFullImageUrl(media?.file || '')}
                     className="absolute inset-0 w-full h-full object-cover"
-                    poster={media.thumbnail ? getFullImageUrl(media.thumbnail) : undefined}
+                    poster={media?.thumbnail ? getFullImageUrl(media.thumbnail) : undefined}
                   />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-                    {getMediaIcon(media.media_type)}
-                    <span className="text-xs text-gray-500 ml-2">{media.file?.split('/').pop()}</span>
+                    {getMediaIcon(media?.media_type || 'file')}
+                    <span className="text-xs text-gray-500 ml-2">{media?.file?.split('/').pop()}</span>
                   </div>
                 )}
 
-                {index === 3 && post.media.length > 4 && (
+                {index === 3 && post.media && post.media.length > 4 && (
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
                     <span className="text-white font-bold text-xl">+{post.media.length - 4}</span>
                   </div>
                 )}
 
-                {media.caption && (
+                {media?.caption && (
                   <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     {media.caption}
                   </div>
@@ -424,8 +428,8 @@ export default function Post({
           </div>
         )}
 
-        {/* Media Preview Modal */}
-        {mediaPreviewIndex !== null && (
+        {/* Media Preview Modal - FIXED: Safe null checks */}
+        {mediaPreviewIndex !== null && post.media && post.media.length > 0 && (
           <div
             className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 cursor-pointer"
             onClick={() => setMediaPreviewIndex(null)}
@@ -439,23 +443,23 @@ export default function Post({
 
             {post.media[mediaPreviewIndex]?.media_type === 'image' ? (
               <img
-                src={post.media ? getFullImageUrl(post.media[mediaPreviewIndex].file) : ''}
+                src={getFullImageUrl(post.media[mediaPreviewIndex]?.file || '')}
                 alt="Preview"
                 className="max-w-full max-h-[90vh] object-contain"
               />
             ) : post.media[mediaPreviewIndex]?.media_type === 'video' ? (
               <video
-                src={getFullImageUrl(post.media[mediaPreviewIndex].file)}
+                src={getFullImageUrl(post.media[mediaPreviewIndex]?.file || '')}
                 controls
                 autoPlay
                 className="max-w-full max-h-[90vh]"
               />
             ) : (
               <div className="text-center text-white">
-                {getMediaIcon(post.media[mediaPreviewIndex].media_type)}
-                <p className="mt-2">{post.media[mediaPreviewIndex].file?.split('/').pop()}</p>
+                {getMediaIcon(post.media[mediaPreviewIndex]?.media_type || 'file')}
+                <p className="mt-2">{post.media[mediaPreviewIndex]?.file?.split('/').pop()}</p>
                 <a
-                  href={getFullImageUrl(post.media[mediaPreviewIndex].file)}
+                  href={getFullImageUrl(post.media[mediaPreviewIndex]?.file || '')}
                   download
                   className="mt-4 inline-block px-4 py-2 bg-amber-600 rounded-lg hover:bg-amber-700"
                 >
@@ -471,7 +475,7 @@ export default function Post({
                   className="absolute left-4 top-1/2 -translate-y-1/2 p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setMediaPreviewIndex((prev) => (prev! > 0 ? prev! - 1 : post.media.length - 1));
+                    setMediaPreviewIndex((prev) => (prev !== null && post.media && prev > 0 ? prev - 1 : post.media ? post.media.length - 1 : 0));
                   }}
                 >
                   <ChevronDown className="h-6 w-6 text-white rotate-90" />
@@ -480,7 +484,7 @@ export default function Post({
                   className="absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setMediaPreviewIndex((prev) => (prev! < post.media.length - 1 ? prev! + 1 : 0));
+                    setMediaPreviewIndex((prev) => (prev !== null && post.media && prev < post.media.length - 1 ? prev + 1 : 0));
                   }}
                 >
                   <ChevronDown className="h-6 w-6 text-white -rotate-90" />

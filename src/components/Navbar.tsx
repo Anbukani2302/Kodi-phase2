@@ -1,6 +1,6 @@
 // Updated Navbar.tsx - Add Connected People option
 
-import { Home, Users, MessageCircle, User, LogOut, Globe, TreeDeciduous, Download, Users2, Settings, X, Menu, ChevronDown, LayoutGrid, UserPlus, Bell, Clock, ChevronRight } from "lucide-react";
+import { Home, Users, MessageCircle, User, LogOut, Globe, TreeDeciduous, Download, Users2, Settings, X, Menu, ChevronDown, LayoutGrid, UserPlus, UserX, Bell, Clock, ChevronRight } from "lucide-react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useLanguage } from "../contexts/LanguageContext";
 import connectionService, { GenealogyInvitation } from "../services/connectionService";
@@ -611,6 +611,20 @@ export default function Navbar({
                                 {language === 'ta' ? 'உறவு முறை பட்டியல்' : 'Relationship List'}
                               </span>
                             </button>
+
+                            {/* Delete Relation Option */}
+                            <button
+                              onClick={() => {
+                                navigate("/delete-relation");
+                                setIsServicesOpen(false);
+                              }}
+                              className="w-full flex items-center space-x-3 px-4 py-2.5 text-left text-red-600 hover:bg-red-50 transition-colors border-t border-amber-100 mt-1 pt-2"
+                            >
+                              <UserX className="h-4 w-4 text-red-600" />
+                              <span className="text-sm font-medium">
+                                {language === 'ta' ? 'உறவு முறையை நீக்கு' : 'Delete Relation'}
+                              </span>
+                            </button>
                           </div>
                         </>
                       )}
@@ -764,6 +778,12 @@ export default function Navbar({
                         icon={<UserPlus size={18} />}
                         onClick={() => { handleConnectedPeopleClick(); }}
                         active={isActive("/connected-people")}
+                      />
+                      <MobileNavBtn
+                        label={language === 'ta' ? 'உறவு முறையை நீக்கு' : 'Delete Relation'}
+                        icon={<UserX size={18} />}
+                        onClick={() => { navigate("/delete-relation"); setIsMobileMenuOpen(false); }}
+                        active={isActive("/delete-relation")}
                       />
                       <MobileNavBtn
                         label={t("home")}

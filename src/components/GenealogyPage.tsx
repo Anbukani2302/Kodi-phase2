@@ -649,10 +649,10 @@ const GenealogyPage = () => {
 
     try {
       const data = await genealogyService.getConnectedPersons(personId, 1);
-      console.log("📥 RELATIVES DATA RECEIVED:", data);
+      console.log(" RELATIVES DATA RECEIVED:", data);
       setRelativesModalData(data);
     } catch (error) {
-      console.error("🔴 Error fetching relatives for modal:", error);
+      console.error(" Error fetching relatives for modal:", error);
       toast.error(isTamil ? "உறவுகளைப் பெறுவதில் தோல்வி" : "Failed to fetch relatives");
     } finally {
       setIsFetchingRelatives(false);
@@ -1077,27 +1077,33 @@ const GenealogyPage = () => {
   const handleNextFlowerClick = async (node: UniverseNode) => {
     console.log("Next Flower clicked for node:", node);
 
-    if (node.isUpdated && node.personId) {
+    if (node.personId) {
+      // Set activeParentId IMMEDIATELY so that Gen 2+ nodes are highlighted right away
+      setActiveParentId(node.id);
+
       try {
         toast.loading(isTamil ? 'அடுத்த நிலைக்கு செல்கிறது...' : 'Going to next level...', { id: 'next-flower' });
 
-        const response = await genealogyService.getNextFlow(node.personId);
+        const rawId = node.personId || (node as any).person_id;
+        const targetId = Number(rawId);
+
+        console.log(`🚀 Next Flower Click: Triggering APIs for person ${targetId}`);
+
+        const [response] = await Promise.all([
+          genealogyService.getNextFlow(targetId),
+          fetchGenerationInfo(targetId)
+        ]);
+
         console.log("Next Flow response:", response);
 
         const nextPerson = (response as any).person;
-        const permissions = (response as any).permissions;
 
-        if (nextPerson) {
-          const personName = (nextPerson.full_name || nextPerson.name || node.name).toUpperCase();
-          const personGender = nextPerson.gender || 'F';
+        if (nextPerson || (response as any).existing_relations) {
+          const personName = (nextPerson?.full_name || nextPerson?.name || node.name).toUpperCase();
+          const personGender = nextPerson?.gender || 'F';
 
           // Build relations for this node
           buildNodesFromRelationsForNextFlow(response, personGender, node.id);
-
-          // Fetch generation info
-          if (nextPerson.id) {
-            fetchGenerationInfo(nextPerson.id);
-          }
 
           // Center on this node
           setTransform({
@@ -1106,36 +1112,28 @@ const GenealogyPage = () => {
             scale: 0.8
           });
 
-          // Set as active parent
-          setActiveParentId(node.id);
-
           // Update navigation history
           const path = getPathToNode(node);
           const calcRelResult = await calculateRelationFromPath(path);
 
           setNavigationHistory(prev => {
             const newHistory = [...prev];
-            const lastIndex = newHistory.length - 1;
-
-            // Check if this node is already in history
             const existingIndex = newHistory.findIndex(item => item.id === node.id);
 
             if (existingIndex !== -1) {
-              // Update existing entry
               newHistory[existingIndex] = {
                 ...newHistory[existingIndex],
                 name: personName,
-                personId: nextPerson.id,
+                personId: nextPerson?.id || node.personId,
                 calculatedRelation: calcRelResult?.label
               };
               return newHistory.slice(0, existingIndex + 1);
             } else {
-              // Add new entry
               return [...newHistory, {
                 id: node.id,
                 name: personName,
                 relation: node.relation,
-                personId: nextPerson.id,
+                personId: nextPerson?.id || node.personId,
                 level: node.level,
                 timestamp: Date.now(),
                 calculatedRelation: calcRelResult?.label
@@ -1144,27 +1142,24 @@ const GenealogyPage = () => {
           });
 
           setShowNavigationSteppers(true);
-
           toast.success(`${personName} loaded`, { id: 'next-flower' });
-
-          // Check if this node is the target of path navigation
-          if (relationshipPath && targetPathNodeId === node.id) {
-            console.log("This is the target node - keeping blink active");
-            // Already blinking from path navigation
-          }
+        } else {
+          // If no next flow data, still expand (activeParentId already set above)
+          expandNode(node.id);
         }
       } catch (error) {
         console.error("Error in next flow:", error);
         toast.error(isTamil ? 'அடுத்த நிலைக்கு செல்ல முடியவில்லை' : 'Failed to load next level', { id: 'next-flower' });
+        expandNode(node.id);
       }
     } else {
-      // For placeholder nodes, just expand
+      // For literal placeholder nodes with NO personId
+      setActiveParentId(node.id);
       setTransform({
         x: -node.position.x * 0.8,
         y: -node.position.y * 0.8,
         scale: 0.8
       });
-      setActiveParentId(node.id);
       expandNode(node.id);
     }
   };
@@ -1281,6 +1276,19 @@ const GenealogyPage = () => {
       setShowModal(false);
 
       toast.success(isTamil ? `${nextNode.person_name} காட்டப்படுகிறது` : `Showing ${nextNode.person_name}`, { id: 'expand-node' });
+
+      // Fetch next flow and generation info for the new node
+      if (nextNode.person_id) {
+        try {
+          await Promise.all([
+            genealogyService.getNextFlow(nextNode.person_id),
+            fetchGenerationInfo(nextNode.person_id)
+          ]);
+        } catch (e) {
+          console.error("Error fetching path node data:", e);
+        }
+      }
+
 
     } catch (error) {
       console.error("Error:", error);
@@ -1473,8 +1481,8 @@ const GenealogyPage = () => {
           'மகள்': 'maghazh',
           'அண்ணன்': 'anna',
           'அக்கா': 'akka',
-          'தம்பி': 'thambi',
-          'தங்கை': 'thangai'
+          'தம்பி': 'younger_brother',
+          'தங்கை': 'younger_sister'
         };
 
         relationToAdd = tamilToEnglishMap[tamilRelation] || tamilRelation.toLowerCase();
@@ -1855,14 +1863,18 @@ const GenealogyPage = () => {
           expandAshramam(targetNode.id);
         } else if (targetNode.isConnected && targetNode.personId) {
           try {
-            const response = await genealogyService.getNextFlow(targetNode.personId);
+            const targetId = Number(targetNode.personId);
+            const [response] = await Promise.all([
+              genealogyService.getNextFlow(targetId),
+              fetchGenerationInfo(targetId)
+            ]);
             const nextPerson = (response as any).person;
             const nextRelations = (response as any).existing_relations;
             const permissions = (response as any).permissions;
 
-            if (nextPerson) {
-              const personName = (nextPerson.full_name || nextPerson.name || targetNode.name).toUpperCase();
-              const personGender = nextPerson.gender || 'F';
+            if (nextPerson || nextRelations) {
+              const personName = (nextPerson?.full_name || nextPerson?.name || targetNode.name).toUpperCase();
+              const personGender = nextPerson?.gender || 'F';
 
               setNodes(prev => ({
                 ...prev,
@@ -1870,7 +1882,7 @@ const GenealogyPage = () => {
                   ...prev[targetNode.id],
                   isOpen: true,
                   name: personName,
-                  personId: nextPerson.id,
+                  personId: nextPerson?.id || targetNode.personId,
                   isUpdated: true,
                   isConnected: permissions?.is_connected,
                   isReadOnly: permissions?.is_readonly
@@ -1880,8 +1892,6 @@ const GenealogyPage = () => {
               if (nextRelations) {
                 buildNodesFromRelationsForNextFlow(response, personGender, targetNode.id);
               }
-
-              fetchGenerationInfo(nextPerson.id);
             }
           } catch (e) {
             console.error("Error in next flow:", e);
@@ -1900,11 +1910,11 @@ const GenealogyPage = () => {
               return nextNodes;
             });
 
+            await Promise.all([
+              genealogyService.getNextFlow(targetNode.personId).then(data => buildNodesFromRelationsForNextFlow(data, targetNode.gender, targetNode.id)),
+              fetchGenerationInfo(targetNode.personId)
+            ]);
             buildNodesFromRelations(relationsData, targetNode.gender, targetNode.id);
-
-            if (targetNode.personId) {
-              fetchGenerationInfo(targetNode.personId);
-            }
           } catch (error) {
             console.error(`Error fetching relations for person ${targetNode.personId}:`, error);
             expandNode(targetNode.id, targetNode.gender);
@@ -1915,7 +1925,7 @@ const GenealogyPage = () => {
       } else {
         console.log(`Node ${targetNode.id} already has children, just updating view`);
 
-        if (targetNode.personId && targetNode.id !== 'root') {
+        if (targetNode.personId) {
           fetchGenerationInfo(targetNode.personId);
         }
       }
@@ -3452,6 +3462,8 @@ const GenealogyPage = () => {
     setInvitationError(null);
     setSelectedNodeCalculatedRelation(null);
 
+    // NOTE: API calls are triggered AFTER the isHighlighted check below
+
     const isRoot = node.id === 'root';
     const isAshramam = node.relation === 'Ashramam';
     const isAshramamAdd = node.relation === 'Ashramam Add';
@@ -3488,6 +3500,15 @@ const GenealogyPage = () => {
     if (!isHighlighted) {
       console.log("Ignoring click on non-path node:", node.id);
       return;
+    }
+
+    // Fetch next_flow and generation-info for this node now that it is confirmed clickable
+    const rawId = node.personId || (node as any).person_id;
+    if (rawId) {
+      const targetId = Number(rawId);
+      console.log(`📡 Node Click (confirmed): Triggering next_flow & generation-info for person ${targetId}`);
+      fetchGenerationInfo(targetId);
+      genealogyService.getNextFlow(targetId).catch(err => console.error("Auto next flow hit failed:", err));
     }
 
     /* 
@@ -3711,43 +3732,46 @@ const GenealogyPage = () => {
         return;
       }
 
-      // Build action string from relation
-      let action = `add_${relationToMe.toLowerCase()}`;
+      // Build action string using robust mapping for all nodes
+      const tamilToEnglishMap: { [key: string]: string } = {
+        'அண்ணன்': 'anna',
+        'தம்பி': 'younger_brother',
+        'தங்கை': 'younger_sister',
+        'அண்ணா': 'elder_brother',
+        'அக்கா': 'elder_sister',
+        'அப்பா': 'father',
+        'அம்மா': 'mother',
+        'மகன்': 'son',
+        'மகள்': 'daughter',
+        'husband': 'husband',
+        'wife': 'wife',
+        'younger_brother': 'younger_brother',
+        'younger_sister': 'younger_sister',
+        'elder_brother': 'elder_brother',
+        'elder_sister': 'elder_sister',
+        'father': 'father',
+        'mother': 'mother',
+        'son': 'son',
+        'daughter': 'daughter'
+      };
 
-      if (selectedNode.relation === 'Ashramam Member' && selectedNode.relationLabel) {
-        const tamilToEnglishMap: { [key: string]: string } = {
-          'அண்ணன்': 'anna',
-          'அக்கா': 'akka',
-          'தம்பி': 'thambi',
-          'தங்கை': 'thangai',
-          'அப்பா': 'father',
-          'அம்மா': 'mother',
-          'மகன்': 'magan',
-          'மகள்': 'maghazh',
-          'மருமகன்': 'marumagan',
-          'மருமகள்': 'marumagal',
-          'தாத்தா': 'thatha',
-          'பாட்டி': 'paati',
-          'கணவன்': 'husband',
-          'மனைவி': 'wife',
-          'சித்தி': 'chithi',
-          'அத்தை': 'athai',
-          'மாமா': 'mama',
-          'சித்தப்பா': 'chithappa',
-          'பெரியப்பா': 'periyappa',
-          'பெரியம்மா': 'periyamma',
-          'மைத்துனர்': 'maithunar',
-          'அத்தான்': 'athan',
-          'அண்ணி': 'anni',
-          'கொழுந்தனார்': 'kolunthanar',
-          'கொழுந்தியாள்': 'kolunthiyazh',
-          'பேரன்': 'peran',
-          'பேத்தி': 'petthi'
-        };
-        const relationName = selectedNode.relationLabel.toLowerCase();
-        const englishRelation = tamilToEnglishMap[relationName] || relationName;
-        action = `add_${englishRelation}`;
+      const relationName = (selectedNode.relationLabel || selectedNode.relation || '').toLowerCase();
+      const lowerRelation = selectedNode.relation.toLowerCase();
+      let englishRelation = '';
+
+      if (lowerRelation.includes('younger brother') || lowerRelation.includes('thambi') || relationName.includes('thambi')) {
+        englishRelation = 'younger_brother';
+      } else if (lowerRelation.includes('younger sister') || lowerRelation.includes('thangai') || relationName.includes('thangai')) {
+        englishRelation = 'younger_sister';
+      } else if (lowerRelation.includes('elder brother') || lowerRelation.includes('anna') || relationName.includes('anna')) {
+        englishRelation = 'elder_brother';
+      } else if (lowerRelation.includes('elder sister') || lowerRelation.includes('akka') || relationName.includes('akka')) {
+        englishRelation = 'elder_sister';
+      } else {
+        englishRelation = tamilToEnglishMap[relationName] || relationToMe.toLowerCase().replace(/\s+/g, '_');
       }
+
+      const action = `add_${englishRelation}`;
 
       const actionPayload: AddRelativeActionPayload = {
         action: action,
@@ -3788,6 +3812,11 @@ const GenealogyPage = () => {
             isUpdated: true,
             level: prev.level // Keep the same level
           } : null);
+
+          // Fetch generation info for the newly added person
+          if (savedPersonId) {
+            fetchGenerationInfo(savedPersonId);
+          }
 
           // DO NOT refresh the tree for this node - this would cause generation change
           // Instead, we'll just update the parent's relations to show this node as updated
@@ -4080,11 +4109,11 @@ const GenealogyPage = () => {
         'elder sister': 'add_elder_sister',
 
         // Younger Siblings
-        'தம்பி': 'add_thambi',
-        'thambi': 'add_thambi',
+        'தம்பி': 'add_younger_brother',
+        'thambi': 'add_younger_brother',
         'younger brother': 'add_younger_brother',
-        'தங்கை': 'add_thangai',
-        'thangai': 'add_thangai',
+        'தங்கை': 'add_younger_sister',
+        'thangai': 'add_younger_sister',
         'younger sister': 'add_younger_sister',
 
         // Children
@@ -4212,7 +4241,7 @@ const GenealogyPage = () => {
           'add_mama', 'add_athai', 'add_athan', 'add_anni',
           'add_kolunthanar', 'add_kolunthiyazh', 'add_marumagan', 'add_marumagal',
           'add_peran', 'add_petthi', 'add_anna', 'add_elder_sister',
-          'add_thambi', 'add_thangai', 'add_magan', 'add_maghazh'
+          'add_younger_brother', 'add_younger_sister', 'add_magan', 'add_maghazh'
         ];
 
         // Check if the relation itself is a valid action
@@ -4268,6 +4297,9 @@ const GenealogyPage = () => {
               const flowResponse = await genealogyService.getNextFlow(parentNode.personId);
               if (flowResponse) {
                 buildNodesFromRelationsForNextFlow(flowResponse, parentNode.gender || 'M', parentNodeId || 'root');
+                if (parentNode.personId) {
+                  fetchGenerationInfo(parentNode.personId);
+                }
               }
             }
           }
@@ -5147,13 +5179,13 @@ const GenealogyPage = () => {
                                   <div
                                     key={person.id}
                                     onClick={() => handleRelativeCardClick(person.mobile_number)}
-                                    className="group relative flex items-center gap-3 p-2.5 rounded-xl hover:bg-amber-100 transition-all cursor-pointer border border-transparent hover:border-amber-200 hover:shadow-sm"
+                                    className="group relative flex items-center gap-2 md:gap-3 p-1.5 md:p-2.5 rounded-xl hover:bg-amber-100 transition-all cursor-pointer border border-transparent hover:border-amber-200 hover:shadow-sm"
                                   >
-                                    <div className={`w-9 h-9 rounded-full flex items-center justify-center border-2 shrink-0 shadow-sm transition-transform group-hover:scale-105 ${person.gender === 'F' ? 'bg-pink-50 border-pink-100' : 'bg-blue-50 border-blue-100'}`}>
+                                    <div className={`w-7 h-7 md:w-9 md:h-9 rounded-full flex items-center justify-center border-2 shrink-0 shadow-sm transition-transform group-hover:scale-105 ${person.gender === 'F' ? 'bg-pink-50 border-pink-100' : 'bg-blue-50 border-blue-100'}`}>
                                       {person.image ? (
                                         <img src={getFullImageUrl(person.image) || undefined} alt="" className="w-full h-full rounded-full object-cover" />
                                       ) : (
-                                        <User size={16} className={person.gender === 'F' ? 'text-pink-300' : 'text-blue-300'} />
+                                        <User className={`w-4 h-4 md:w-5 md:h-5 ${person.gender === 'F' ? 'text-pink-300' : 'text-blue-300'}`} />
                                       )}
                                     </div>
                                     <div className="flex-1 min-w-0">
@@ -5237,13 +5269,13 @@ const GenealogyPage = () => {
                                   <div
                                     key={person.id}
                                     onClick={() => handleRelativeCardClick(person.mobile_number)}
-                                    className="group relative flex items-center gap-3 p-2.5 rounded-xl hover:bg-orange-100 transition-all cursor-pointer border border-transparent hover:border-orange-200 hover:shadow-sm"
+                                    className="group relative flex items-center gap-2 md:gap-3 p-1.5 md:p-2.5 rounded-xl hover:bg-orange-100 transition-all cursor-pointer border border-transparent hover:border-orange-200 hover:shadow-sm"
                                   >
-                                    <div className={`w-9 h-9 rounded-full flex items-center justify-center border-2 shrink-0 shadow-sm transition-transform group-hover:scale-105 ${person.gender === 'F' ? 'bg-rose-50 border-rose-100' : 'bg-indigo-50 border-indigo-100'}`}>
+                                    <div className={`w-7 h-7 md:w-9 md:h-9 rounded-full flex items-center justify-center border-2 shrink-0 shadow-sm transition-transform group-hover:scale-105 ${person.gender === 'F' ? 'bg-rose-50 border-rose-100' : 'bg-indigo-50 border-indigo-100'}`}>
                                       {person.image ? (
                                         <img src={getFullImageUrl(person.image) || undefined} alt="" className="w-full h-full rounded-full object-cover" />
                                       ) : (
-                                        <User size={16} className={person.gender === 'F' ? 'text-rose-300' : 'text-indigo-300'} />
+                                        <User className={`w-4 h-4 md:w-5 md:h-5 ${person.gender === 'F' ? 'text-rose-300' : 'text-indigo-300'}`} />
                                       )}
                                     </div>
                                     <div className="flex-1 min-w-0">
@@ -6009,35 +6041,35 @@ const GenealogyPage = () => {
 
       {/* Generation Info Box */}
       {generationInfo && !isTwoWayMode && (
-        <div className="absolute top-48 left-4 z-50 bg-white/90 backdrop-blur-sm border border-gray-200 rounded-2xl p-4 shadow-xl min-w-70">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Hash size={18} className="text-blue-600" />
+        <div className="absolute top-40 sm:top-48 left-2 sm:left-4 z-50 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-xl sm:rounded-2xl p-1 sm:p-4 shadow-xl min-w-[120px] sm:min-w-[280px]">
+          <div className="flex items-center justify-between mb-1.5 sm:mb-3">
+            <div className="flex items-center gap-1 sm:gap-2">
+              <div className="p-1 sm:p-2 bg-blue-100 rounded-lg">
+                <Hash className="w-3.5 h-3.5 sm:w-[18px] sm:h-[18px] text-blue-600" />
               </div>
               <div>
-                <h3 className="font-bold text-gray-800 text-lg">
-                  Generation {generationInfo.generation.number}
+                <h3 className="font-bold text-gray-800 text-[10px] sm:text-lg leading-tight">
+                  Gen {generationInfo.generation.number}
                 </h3>
-                <p className="text-sm text-gray-600">{generationInfo.generation.label}</p>
+                <p className="text-[8px] sm:text-sm text-gray-600 truncate max-w-[80px] sm:max-w-none">{generationInfo.generation.label}</p>
               </div>
             </div>
             {isLoadingGenerationInfo && (
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+              <div className="animate-spin rounded-full h-2.5 w-2.5 sm:h-4 sm:w-4 border-b-2 border-blue-600"></div>
             )}
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-              <div className="flex items-center gap-2">
-                <Users size={16} className="text-gray-500" />
-                <span className="text-sm font-medium text-gray-700">Family Members</span>
+          <div className="space-y-1.5 sm:space-y-3">
+            <div className="flex items-center justify-between p-1.5 sm:p-3 bg-gray-50 rounded-lg sm:rounded-xl">
+              <div className="flex items-center gap-1 sm:gap-2">
+                <Users className="w-3 h-3 sm:w-4 sm:h-4 text-gray-500" />
+                <span className="text-[9px] sm:text-sm font-medium text-gray-700">Members</span>
               </div>
               <div className="flex items-center gap-1">
-                <span className="text-2xl font-bold text-blue-600">
+                <span className="text-sm sm:text-2xl font-bold text-blue-600">
                   {generationInfo.member_counts.total_connected}
                 </span>
-                <span className="text-sm text-gray-500">people</span>
+                <span className="text-[8px] sm:text-sm text-gray-500 font-medium">people</span>
               </div>
             </div>
           </div>
@@ -6682,44 +6714,10 @@ const GenealogyPage = () => {
                       <span>→</span>
                     </button>
 
-                    {(selectedNode.isUpdated && selectedNode.personId) ? (
+                    {selectedNode.personId ? (
                       <button
-                        onClick={async () => {
-                          try {
-                            const response = await genealogyService.getNextFlow(selectedNode.personId);
-                            const nextPerson = (response as any).person;
-                            if (nextPerson) {
-                              const personName = (nextPerson.full_name || nextPerson.name || selectedNode.name).toUpperCase();
-                              const personGender = nextPerson.gender || 'F';
-                              buildNodesFromRelationsForNextFlow(response, personGender, selectedNode.id);
-                              fetchGenerationInfo(nextPerson.id);
-                              setTransform({
-                                x: -selectedNode.position.x * 0.8,
-                                y: -selectedNode.position.y * 0.8,
-                                scale: 0.8
-                              });
-                              const path = getPathToNode(selectedNode);
-                              const calcRelResult = await calculateRelationFromPath(path);
-                              setActiveParentId(selectedNode.id);
-                              setNavigationHistory(prev => {
-                                const newHistory = [...prev];
-                                const lastIndex = newHistory.length - 1;
-                                if (lastIndex >= 0 && newHistory[lastIndex].id === selectedNode.id) {
-                                  newHistory[lastIndex] = {
-                                    ...newHistory[lastIndex],
-                                    name: personName,
-                                    personId: nextPerson.id,
-                                    calculatedRelation: calcRelResult?.label
-                                  };
-                                }
-                                return newHistory;
-                              });
-                              toast.success(`Viewing ${personName}'s tree`);
-                            }
-                          } catch (e) {
-                            console.error("Error in next flow:", e);
-                            toast.error(t("failedLoadConnected"));
-                          }
+                        onClick={() => {
+                          handleNextFlowerClick(selectedNode);
                           setShowModal(false);
                         }}
                         className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors"
@@ -6730,17 +6728,7 @@ const GenealogyPage = () => {
                     ) : (
                       <button
                         onClick={() => {
-                          if (selectedNode.relation === 'Ashramam') {
-                            expandAshramam(selectedNode.id);
-                          } else {
-                            setTransform({
-                              x: -selectedNode.position.x * 0.8,
-                              y: -selectedNode.position.y * 0.8,
-                              scale: 0.8
-                            });
-                            setActiveParentId(selectedNode.id);
-                            expandNode(selectedNode.id);
-                          }
+                          handleNextFlowerClick(selectedNode);
                           setShowModal(false);
                         }}
                         className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl flex items-center justify-between px-5 transition-colors"
@@ -7417,13 +7405,13 @@ const GenealogyPage = () => {
                       return (
                         <div
                           key={person.id}
-                          className="group flex items-center gap-4 p-4 border border-amber-100 rounded-2xl hover:border-orange-300 hover:shadow-xl transition-all duration-300 bg-white relative overflow-hidden"
+                          className="group flex items-center gap-2 md:gap-4 p-2 md:p-4 border border-amber-100 rounded-2xl hover:border-orange-300 hover:shadow-xl transition-all duration-300 bg-white relative overflow-hidden"
                         >
-                          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center border-2 shrink-0 shadow-md group-hover:scale-105 transition-transform ${person.gender === 'F' ? 'bg-pink-50 border-pink-100' : 'bg-blue-50 border-blue-100'}`}>
+                          <div className={`w-10 h-10 md:w-14 md:h-14 rounded-2xl flex items-center justify-center border-2 shrink-0 shadow-md group-hover:scale-105 transition-transform ${person.gender === 'F' ? 'bg-pink-50 border-pink-100' : 'bg-blue-50 border-blue-100'}`}>
                             {person.image ? (
                               <img src={getFullImageUrl(person.image) || undefined} alt="" className="w-full h-full rounded-2xl object-cover" />
                             ) : (
-                              <User size={24} className={person.gender === 'F' ? 'text-pink-300' : 'text-blue-300'} />
+                              <User className={`w-6 h-6 md:w-8 md:h-8 ${person.gender === 'F' ? 'text-pink-300' : 'text-blue-300'}`} />
                             )}
                           </div>
                           <div className="flex-1 min-w-0">

@@ -334,11 +334,11 @@ class GenealogyService {
         elder_brother: "add_elder_brother",
         anna: "add_anna",
         younger_brother: "add_younger_brother",
-        thambi: "add_thambi",
+        thambi: "add_younger_brother",
         elder_sister: "add_elder_sister",
         akka: "add_elder_sister",
         younger_sister: "add_younger_sister",
-        thangai: "add_thangai",
+        thangai: "add_younger_sister",
         brother: "add_elder_brother",
         sister: "add_elder_sister",
 
@@ -388,9 +388,9 @@ class GenealogyService {
         அப்பா: "add_father",
         அம்மா: "add_mother",
         அண்ணன்: "add_anna",
-        தம்பி: "add_thambi",
+        தம்பி: "add_younger_brother",
         அக்கா: "add_elder_sister",
-        தங்கை: "add_thangai",
+        தங்கை: "add_younger_sister",
         மகன்: "add_magan",
         மகள்: "add_maghazh",
         தாத்தா: "add_thatha",
@@ -698,6 +698,8 @@ class GenealogyService {
         add_aunt: "add_athai",
         add_mythun: "add_mythuni",
         add_மைத்துனி: "add_mythuni",
+        add_thambi: "add_younger_brother",
+        add_thangai: "add_younger_sister",
         add_கொழுந்தியாழ்: "add_kolunthiyazh",
       };
 
@@ -850,6 +852,25 @@ class GenealogyService {
       return response.data;
     } catch (error: any) {
       console.error("Error fetching connected persons:", error);
+      throw error;
+    }
+  }
+  async deleteConnected(personId: number): Promise<any> {
+    try {
+      const response = await api.delete(`/api/genealogy/persons/${personId}/delete-connected/`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Error deleting connected relation:', error);
+      throw error;
+    }
+  }
+
+  async deletePlaceholder(personId: number): Promise<any> {
+    try {
+      const response = await api.delete(`/api/genealogy/persons/${personId}/delete-placeholder/`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Error deleting placeholder relation:', error);
       throw error;
     }
   }

@@ -52,6 +52,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
   const [mobileError, setMobileError] = useState("");
   const [gettingLocation, setGettingLocation] = useState(false);
   const [activeSection, setActiveSection] = useState<string | null>(null);
+  const [isGenderSaved, setIsGenderSaved] = useState(false);
 
   // Suggestion states
   const [familySuggestions, setFamilySuggestions] = useState<Suggestion[]>([]);
@@ -141,6 +142,9 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
         cultureoflife: response.familyname8 || response.cultureoflife,
         preferred_language: response?.preferred_language || language || "en",
       });
+      if (profileData.gender) {
+        setIsGenderSaved(true);
+      }
     } catch (err: unknown) {
       const error = err as Error;
       setError(error.message || t("profileLoadError"));
@@ -513,29 +517,29 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
       }, 1500);
     } catch (err: any) {
       console.error("Save failed:", err);
-      
+
       // Handle field-specific errors from API
       if (err.response?.data) {
         const apiErrors = err.response.data;
         if (apiErrors.dateofbirth) {
-          const rawDobError = Array.isArray(apiErrors.dateofbirth) 
-            ? apiErrors.dateofbirth[0] 
+          const rawDobError = Array.isArray(apiErrors.dateofbirth)
+            ? apiErrors.dateofbirth[0]
             : apiErrors.dateofbirth;
-          
+
           let dobError = rawDobError;
           if (rawDobError === "Invalid date of birth value") {
-            dobError = language === "ta" 
-              ? "செல்லுபடியாகாத பிறந்த தேதி" 
+            dobError = language === "ta"
+              ? "செல்லுபடியாகாத பிறந்த தேதி"
               : "Invalid date of birth value";
           }
-          
+
           setFormErrors(prev => ({
             ...prev,
             dateofbirth: dobError
           }));
-          
+
           setError(dobError);
-          
+
           dateofbirthRef.current?.scrollIntoView({
             behavior: "smooth",
             block: "center",
@@ -1043,7 +1047,8 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
                       onChange={(e) =>
                         handleInputChange("gender", e.target.value)
                       }
-                      className={`w-full px-4 py-3 bg-amber-50/50 border-2 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none appearance-none cursor-pointer transition-all duration-200 ${formErrors.gender
+                      disabled={isGenderSaved}
+                      className={`w-full px-4 py-3 bg-amber-50/50 border-2 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none appearance-none transition-all duration-200 ${isGenderSaved ? "opacity-60 cursor-not-allowed grayscale-[0.2]" : "cursor-pointer"} ${formErrors.gender
                         ? "border-red-300 bg-red-50/50 focus:ring-red-500"
                         : "border-amber-200 hover:border-amber-300"
                         }`}
@@ -1626,10 +1631,10 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
             </div>
           </div>
         </div>
-      </div>
+      </div >
 
       {/* Custom CSS for animations */}
-      <style>{`
+      < style > {`
         @keyframes blob {
           0% { transform: translate(0px, 0px) scale(1); }
           33% { transform: translate(30px, -50px) scale(1.1); }
@@ -1692,7 +1697,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
         .animate-fadeIn {
           animation: fadeIn 0.2s ease-out;
         }
-      `}</style>
-    </div>
+      `}</style >
+    </div >
   );
 }

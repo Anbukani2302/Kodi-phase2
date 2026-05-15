@@ -14,7 +14,8 @@ import ConnectionsPage from "./components/ConnectionsPage";
 import DashboardPage from "./components/DashboardPage";
 import OneToConnectPage from "./components/OneToConnectPage";
 import ConnectedPeople from "./components/ConnectedPeople";
-import { NotificationProvider } from "./contexts/NotificationContext"; 
+import DeleteRelationPage from "./components/DeleteRelationPage";
+import { NotificationProvider } from "./contexts/NotificationContext";
 
 import { authService } from "./services/authService";
 import { Toaster } from "react-hot-toast";
@@ -129,6 +130,15 @@ export default function App() {
             element={
               isAuthenticated ? (
                 localStorage.getItem('userRole') === 'admin' ? <Navigate to="/dashboard" /> : <ConnectedPeople />
+              ) : <Navigate to="/" />
+            }
+          />
+
+          <Route
+            path="/delete-relation"
+            element={
+              isAuthenticated ? (
+                localStorage.getItem('userRole') === 'admin' ? <Navigate to="/dashboard" /> : <DeleteRelationPage />
               ) : <Navigate to="/" />
             }
           />
